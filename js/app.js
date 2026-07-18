@@ -11,6 +11,8 @@
   var UI = global.FMS.UI;
   var A11y = global.FMS.A11y;
   var PWA = global.FMS.PWA;
+  var Icons = global.FMS.Icons;
+  var Copy = global.FMS.Copy;
 
   var GOALS = global.FMS_GOALS;
   var CATEGORIES = global.FMS_CATEGORIES;
@@ -25,15 +27,10 @@
   var startCancelTimer = null;
   var onboardingSlideIndex = 0;
 
-  var FOCUS_MESSAGES = [
-    '지금 집중하지 않으면 나중에도 같은 자리입니다.',
-    '하기 싫은 감정은 행동을 멈출 이유가 아닙니다.',
-    '생각이 많아질수록 손을 움직이세요.',
-    '잘하려 하지 말고 끝까지 실행하세요.',
-    '지금 이 15분이 오늘의 방향을 결정합니다.',
-    '다른 일을 시작하지 마세요. 이것만 끝내세요.',
-    '계획은 이미 끝났습니다. 지금은 실행할 시간입니다.'
-  ];
+  var RING_RADIUS = 44;
+  var RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+  var WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일'];
 
   /* ---------------- 데이터 헬퍼 ---------------- */
 
@@ -52,6 +49,15 @@
   function getStep(goal, stepNumber) {
     if (!goal) return null;
     return goal.steps.find(function (s) { return s.stepNumber === stepNumber; }) || null;
+  }
+
+  function catVar(categoryId, kind) {
+    return 'var(--cat-' + categoryId + (kind === 'soft' ? '-soft' : '') + ')';
+  }
+
+  function categoryIconHtml(categoryId, size) {
+    var sizeClass = size === 'lg' ? ' icon--lg' : '';
+    return '<span class="icon' + sizeClass + '" style="color:' + catVar(categoryId) + ';">' + Icons.category(categoryId) + '</span>';
   }
 
   /* ---------------- 통계 헬퍼 ---------------- */
@@ -144,29 +150,68 @@
     });
   }
 
+  function appBarHtml(opts) {
+    opts = opts || {};
+    if (opts.back) {
+      return '<div class="app-bar">' +
+        '<a class="app-bar__settings" href="' + opts.back + '" aria-label="뒤로 가기">' +
+        '<span class="icon">' + Icons.ui('back') + '</span></a>' +
+        '<span class="text-caption">' + UI.escapeHtml(opts.title || '') + '</span>' +
+        '<span class="app-bar__settings" aria-hidden="true"></span>' +
+        '</div>';
+    }
+    return '<div class="app-bar">' +
+      '<div class="app-bar__brand">' +
+      '<span class="app-bar__mark">15</span>' +
+      '<span>' + UI.escapeHtml(C.APP_NAME) + '</span>' +
+      '</div>' +
+      '<a class="app-bar__settings" href="#/settings" aria-label="설정">' +
+      '<span class="icon">' + Icons.nav('settings') + '</span></a>' +
+      '</div>';
+  }
+
   function goalCardMeta(goal, state) {
     var progress = state.goalProgress[goal.id] || { currentStepNumber: 1, completedStepNumbers: [] };
     var doneToday = Timer.hasCompletedGoalToday(goal.id);
     var total = goal.steps.length;
     var current = Math.min(progress.currentStepNumber, total);
     var completedAll = progress.currentStepNumber > total;
-    return { progress: progress, doneToday: doneToday, total: total, current: current, completedAll: completedAll };
+    var started = (progress.completedStepNumbers || []).length > 0;
+    return { progress: progress, doneToday: doneToday, total: total, current: current, completedAll: completedAll, started: started };
+  }
+
+  function statusBadgeHtml(meta) {
+    if (meta.completedAll) return '<span class="card__badge card__badge--success">전체 완료</span>';
+    if (meta.doneToday) return '<span class="card__badge card__badge--accent">' + UI.escapeHtml(Copy.category.doneTodayBadge) + '</span>';
+    if (meta.started) return '<span class="card__badge">진행 중</span>';
+    return '<span class="card__badge">시작 전</span>';
+  }
+
+  function goalCardHtml(goal, state) {
+    var meta = goalCardMeta(goal, state);
+    var nextStep = getStep(goal, meta.current);
+    var pct = Math.round((meta.progress.completedStepNumbers ? meta.progress.completedStepNumbers.length : 0) / meta.total * 100);
+    return '<a class="goal-card" href="#/goal/' + goal.id + '">' +
+      '<span class="goal-card__icon" style="background:' + catVar(goal.categoryId, 'soft') + ';color:' + catVar(goal.categoryId) + ';">' +
+      '<span class="icon">' + Icons.category(goal.categoryId) + '</span></span>' +
+      '<span class="goal-card__body">' +
+      '<span class="goal-card__title-row"><span class="card__title">' + UI.escapeHtml(goal.title) + '</span>' + statusBadgeHtml(meta) + '</span>' +
+      '<span class="goal-card__progress-row"><span class="progress-track"><span class="progress-fill" style="width:' + Math.max(4, pct) + '%;background:' + catVar(goal.categoryId) + ';"></span></span>' +
+      '<span class="text-caption">' + meta.current + '/' + meta.total + '</span></span>' +
+      '<span class="goal-card__next">' + (meta.completedAll ? UI.escapeHtml(Copy.category.allStepsDone) : UI.escapeHtml(nextStep ? nextStep.title : '')) + '</span>' +
+      '</span>' +
+      '<span class="goal-card__chevron icon">' + Icons.ui('chevronRight') + '</span>' +
+      '</a>';
   }
 
   /* ---------------- 온보딩 ---------------- */
 
-  var ONBOARDING_SLIDES = [
-    { title: '더 좋은 계획은 필요 없습니다.', body: '지금 할 수 있는 행동 하나를 고르고 15분만 실행합니다.' },
-    { title: '15분이 끝나면 멈춥니다.', body: '몰아서 하고 지치는 방식을 반복하지 않습니다.' },
-    { title: '내일 다시 시작합니다.', body: '많이 한 시간이 아니라 다시 시작한 날을 기록합니다.' }
-  ];
-
   function renderOnboarding() {
     var idx = onboardingSlideIndex;
-    var slide = ONBOARDING_SLIDES[idx];
-    var isLast = idx === ONBOARDING_SLIDES.length - 1;
+    var slide = Copy.onboarding.slides[idx];
+    var isLast = idx === Copy.onboarding.slides.length - 1;
 
-    var dots = ONBOARDING_SLIDES.map(function (s, i) {
+    var dots = Copy.onboarding.slides.map(function (s, i) {
       return '<span class="onboarding-dots__dot" aria-current="' + (i === idx ? 'true' : 'false') + '"></span>';
     }).join('');
 
@@ -178,7 +223,7 @@
       '</div>' +
       '<div class="screen__footer">' +
       '<button type="button" class="btn btn-primary" id="onboarding-next">' +
-      (isLast ? '변명 끝. 시작한다' : '다음') +
+      (isLast ? UI.escapeHtml(Copy.onboarding.start) : UI.escapeHtml(Copy.onboarding.next)) +
       '</button>' +
       '</div>';
 
@@ -204,6 +249,7 @@
   function renderHome() {
     var state = Storage.load();
     var stats = computeStats(state);
+    var K = Copy.home;
 
     var continueGoal = null;
     var continueEntry = Object.keys(state.goalProgress)
@@ -213,57 +259,81 @@
         return (b.progress.lastCompletedDate || '').localeCompare(a.progress.lastCompletedDate || '');
       })[0];
 
-    if (continueEntry) {
-      continueGoal = getGoal(continueEntry.gid);
-    } else {
-      continueGoal = GOALS[0];
-    }
+    continueGoal = continueEntry ? getGoal(continueEntry.gid) : GOALS[0];
 
     var meta = goalCardMeta(continueGoal, state);
     var nextStep = getStep(continueGoal, meta.current);
+    var pct = Math.round((meta.progress.completedStepNumbers ? meta.progress.completedStepNumbers.length : 0) / meta.total * 100);
 
     var categoriesHtml = CATEGORIES.map(function (c) {
-      return '<a class="category-tile" href="#/category/' + c.id + '">' + UI.escapeHtml(c.title) + '</a>';
+      var goalsInCat = getGoalsByCategory(c.id);
+      var doneCount = goalsInCat.filter(function (g) { return goalCardMeta(g, state).completedAll; }).length;
+      return '<a class="category-tile" href="#/category/' + c.id + '">' +
+        '<span class="category-tile__icon" style="background:' + catVar(c.id, 'soft') + ';color:' + catVar(c.id) + ';">' +
+        '<span class="icon">' + Icons.category(c.id) + '</span></span>' +
+        '<span class="category-tile__title">' + UI.escapeHtml(c.title) + '</span>' +
+        '<span class="category-tile__meta">' + doneCount + '/' + goalsInCat.length + ' 완주</span>' +
+        '</a>';
     }).join('');
 
     var recentHtml = stats.recentCompleted.length
       ? stats.recentCompleted.map(function (r) {
         var g = getGoal(r.goalId);
-        return '<div class="card"><div class="card__title">' + UI.escapeHtml(g ? g.title : '') +
-          '</div><div class="card__meta">' + UI.escapeHtml(r.date) + ' 완료</div></div>';
+        return timelineItemHtml(g, r, false);
       }).join('')
-      : '<p class="text-caption">아직 완료한 행동이 없습니다.</p>';
+      : '<p class="empty-state">' + UI.escapeHtml(K.emptyRecent) + '</p>';
 
     var html =
-      '<div class="screen__header home-hero">' +
-      '<p class="home-hero__eyebrow">' + UI.escapeHtml(C.APP_NAME) + ' · ' + UI.escapeHtml(Storage.todayKey()) + '</p>' +
-      '<h1 class="home-hero__title" tabindex="-1">당신에게 필요한 것은 더 좋은 계획이 아닙니다.</h1>' +
-      '<p class="text-strong home-hero__accent">지금 시작할 15분입니다.</p>' +
+      appBarHtml() +
+      '<div class="hero">' +
+      '<div class="hero__eyebrow"><span class="text-eyebrow">' + UI.escapeHtml(K.eyebrow) + '</span>' +
+      '<span class="text-caption">' + UI.escapeHtml(Storage.todayKey()) + '</span></div>' +
+      '<h1 class="hero__title" tabindex="-1">' + UI.escapeHtml(K.heroTitle) + '</h1>' +
+      '<p class="text-strong hero__accent">' + UI.escapeHtml(K.heroAccent) + '</p>' +
       '</div>' +
       '<div class="screen__body">' +
-      '<div class="section-title">이어서 진행할 목표</div>' +
-      '<a class="card card--pressable" href="#/goal/' + continueGoal.id + '">' +
-      '<div class="card__title">' + UI.escapeHtml(continueGoal.title) + '</div>' +
-      '<div class="card__meta">' + meta.current + ' / ' + meta.total + '단계 · ' +
-      (meta.doneToday ? '오늘 실행 완료' : (nextStep ? UI.escapeHtml(nextStep.title) : '모든 단계 완료')) +
-      '</div>' +
-      '</a>' +
 
-      '<div class="section-title">자기계발 분야</div>' +
+      '<div class="current-action-card">' +
+      '<div class="current-action-card__meta">' +
+      '<span class="current-action-card__cat-icon" style="background:' + catVar(continueGoal.categoryId, 'soft') + ';color:' + catVar(continueGoal.categoryId) + ';">' +
+      '<span class="icon">' + Icons.category(continueGoal.categoryId) + '</span></span>' +
+      '<span class="text-caption">' + UI.escapeHtml(getCategory(continueGoal.categoryId).title) + ' · ' + meta.current + '/' + meta.total + '단계</span>' +
+      '</div>' +
+      '<div class="current-action-card__title text-h2">' + UI.escapeHtml(continueGoal.title) + '</div>' +
+      '<div class="current-action-card__next text-body">' +
+      (meta.doneToday ? K.doneTodayBadge : UI.escapeHtml(nextStep ? nextStep.title : K.allStepsDone)) +
+      '</div>' +
+      '<div class="progress-track"><div class="progress-fill" style="width:' + Math.max(4, pct) + '%;"></div></div>' +
+      '<a class="btn btn-primary" style="margin-top:20px;" href="#/goal/' + continueGoal.id + '">15분 시작</a>' +
+      '</div>' +
+
+      '<div class="section-title">' + UI.escapeHtml(K.categoriesTitle) + '</div>' +
       '<div class="grid-2">' + categoriesHtml + '</div>' +
 
-      '<div class="section-title">이번 주 기록</div>' +
+      '<div class="section-title">' + UI.escapeHtml(K.statsTitle) + '</div>' +
       '<div class="stat-row">' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.weeklyActiveDays + '</div><div class="stat-tile__label">이번 주 실행일</div></div>' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.totalCompletedSteps + '</div><div class="stat-tile__label">완료한 행동</div></div>' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.restartCount + '</div><div class="stat-tile__label">다시 시작한 횟수</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.weeklyActiveDays + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.weeklyActiveDays) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.totalCompletedSteps + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.totalCompletedSteps) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.restartCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.restartCount) + '</div></div>' +
       '</div>' +
 
-      '<div class="section-title">최근 완료한 행동</div>' +
+      '<div class="section-title">' + UI.escapeHtml(K.recentTitle) + '</div>' +
       recentHtml +
       '</div>';
 
     setScreen(html, { navKey: 'home' });
+  }
+
+  function timelineItemHtml(goal, record, stopped) {
+    var iconClass = stopped ? 'timeline-item__icon timeline-item__icon--stopped' : 'timeline-item__icon';
+    var iconSvg = stopped ? Icons.ui('close') : Icons.ui('check');
+    var suffix = stopped ? Copy.records.stoppedSuffix : Copy.records.completedSuffix;
+    return '<div class="timeline-item">' +
+      '<span class="' + iconClass + '"><span class="icon icon--sm">' + iconSvg + '</span></span>' +
+      '<span class="timeline-item__body">' +
+      '<span class="timeline-item__title">' + UI.escapeHtml(goal ? goal.title : '') + '</span>' +
+      '<span class="timeline-item__meta">' + UI.escapeHtml(record.date) + suffix + '</span>' +
+      '</span></div>';
   }
 
   /* ---------------- 분야별 목표 목록 ---------------- */
@@ -278,20 +348,17 @@
     var goals = getGoalsByCategory(categoryId);
 
     var cardsHtml = goals.map(function (goal) {
-      var meta = goalCardMeta(goal, state);
-      var nextStep = getStep(goal, meta.current);
-      return '<a class="card card--pressable" href="#/goal/' + goal.id + '">' +
-        '<div class="card__title">' + UI.escapeHtml(goal.title) + '</div>' +
-        '<div class="card__meta">' + meta.current + ' / ' + meta.total + '단계' +
-        (meta.doneToday ? ' · 오늘 실행 완료' : '') + '</div>' +
-        '<div class="card__meta">' + (meta.completedAll ? '모든 단계를 완료했습니다.' : UI.escapeHtml(nextStep ? nextStep.title : '')) + '</div>' +
-        '</a>';
+      return goalCardHtml(goal, state);
     }).join('');
 
     var html =
+      appBarHtml({ back: '#/home', title: Copy.category.eyebrow }) +
       '<div class="screen__header">' +
-      '<p class="text-caption">자기계발 분야</p>' +
+      '<div style="display:flex;align-items:center;gap:12px;">' +
+      '<span class="current-action-card__cat-icon" style="background:' + catVar(category.id, 'soft') + ';color:' + catVar(category.id) + ';">' +
+      '<span class="icon">' + Icons.category(category.id) + '</span></span>' +
       '<h1 tabindex="-1">' + UI.escapeHtml(category.title) + '</h1>' +
+      '</div>' +
       '</div>' +
       '<div class="screen__body card-list">' + cardsHtml + '</div>';
 
@@ -308,6 +375,7 @@
     }
     var state = Storage.load();
     var meta = goalCardMeta(goal, state);
+    var K = Copy.goalDetail;
 
     if (meta.doneToday) {
       Router.navigate('/already-done/' + goalId, { replace: true });
@@ -316,10 +384,11 @@
 
     if (meta.completedAll) {
       var doneHtml =
+        appBarHtml({ back: '#/category/' + goal.categoryId, title: goal.title }) +
         '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(goal.title) + '</h1></div>' +
-        '<div class="screen__body screen--center"><p class="text-strong">모든 단계를 완료했습니다.</p>' +
-        '<p class="text-body">다른 목표를 선택해 계속 실행하세요.</p></div>' +
-        '<div class="screen__footer"><a class="btn btn-secondary" href="#/category/' + goal.categoryId + '">다른 목표 보기</a></div>';
+        '<div class="screen__body screen--center"><p class="text-strong">' + UI.escapeHtml(K.allDoneTitle) + '</p>' +
+        '<p class="text-body">' + UI.escapeHtml(K.allDoneBody) + '</p></div>' +
+        '<div class="screen__footer"><a class="btn btn-secondary" href="#/category/' + goal.categoryId + '">' + UI.escapeHtml(K.allDoneButton) + '</a></div>';
       setScreen(doneHtml, { navKey: 'home' });
       return;
     }
@@ -328,22 +397,21 @@
     var startMessage = goal.startMessage;
 
     var html =
+      appBarHtml({ back: '#/category/' + goal.categoryId, title: goal.title }) +
       '<div class="screen__header">' +
-      '<p class="text-caption">' + UI.escapeHtml(goal.title) + ' · ' + step.stepNumber + ' / ' + meta.total + '단계</p>' +
-      '<h1 tabindex="-1">' + UI.escapeHtml(step.title) + '</h1>' +
+      '<span class="card__badge card__badge--accent">' + step.stepNumber + ' / ' + meta.total + '단계</span>' +
+      '<h1 tabindex="-1" style="margin-top:12px;">' + UI.escapeHtml(step.title) + '</h1>' +
       '</div>' +
       '<div class="screen__body">' +
-      '<div class="card"><div class="card__title">오늘 할 행동</div><p class="text-body" style="margin-top:8px;">' + UI.escapeHtml(step.action) + '</p></div>' +
-      '<div class="card"><div class="card__title">시작 전 준비</div><p class="text-body" style="margin-top:8px;">' + UI.escapeHtml(step.preparation) + '</p></div>' +
-      '<div class="card"><div class="card__title">15분 후 마무리</div><p class="text-body" style="margin-top:8px;">' + UI.escapeHtml(step.finishAction) + '</p></div>' +
+      '<div class="card" style="border-color:' + catVar(goal.categoryId) + ';border-width:1.5px;">' +
+      '<div class="card__title">' + UI.escapeHtml(K.actionCardTitle) + '</div><p class="text-body" style="margin-top:8px;">' + UI.escapeHtml(step.action) + '</p></div>' +
+      '<div class="card"><div class="card__title">' + UI.escapeHtml(K.prepCardTitle) + '</div><p class="text-body" style="margin-top:8px;">' + UI.escapeHtml(step.preparation) + '</p></div>' +
+      '<div class="card"><div class="card__title">' + UI.escapeHtml(K.finishCardTitle) + '</div><p class="text-body" style="margin-top:8px;">' + UI.escapeHtml(step.finishAction) + '</p></div>' +
       '<p class="text-strong" style="margin-top:24px;">' + UI.escapeHtml(startMessage) + '</p>' +
       '</div>' +
       '<div class="screen__footer">' +
-      '<button type="button" class="btn btn-primary" id="start-timer-btn">15분 시작</button>' +
-      '<p class="text-caption" style="text-align:center;margin-top:8px;">변명은 행동을 대신하지 못합니다.</p>' +
-      '<div id="start-cancel-wrap" class="hidden" style="margin-top:8px;text-align:center;">' +
-      '<button type="button" class="btn-quiet" id="start-cancel-btn">시작 취소</button>' +
-      '</div>' +
+      '<button type="button" class="btn btn-primary" id="start-timer-btn">' + UI.escapeHtml(K.startButton) + '</button>' +
+      '<p class="text-caption" style="text-align:center;margin-top:8px;">' + UI.escapeHtml(K.startCaption) + '</p>' +
       '</div>';
 
     setScreen(html, { navKey: 'home' });
@@ -384,12 +452,13 @@
   /* ---------------- 알림 권한 바텀시트 ---------------- */
 
   function openNotificationSheet() {
+    var K = Copy.notificationSheet;
     UI.showSheet({
-      title: '15분이 끝났을 때 알려드립니다.',
-      body: '휴대전화 알림을 허용하면 타이머 종료 시 마무리 알림을 표시합니다.',
+      title: K.title,
+      body: K.body,
       actions: [
         {
-          label: '알림 허용',
+          label: K.allow,
           className: 'btn btn-primary',
           onSelect: function () {
             Notifications.requestPermission().then(function (result) {
@@ -403,7 +472,7 @@
           }
         },
         {
-          label: '화면 알림만 사용',
+          label: K.screenOnly,
           className: 'btn btn-secondary',
           onSelect: function () {
             Storage.update(function (state) {
@@ -426,23 +495,37 @@
     }
     var goal = getGoal(session.goalId);
     var state = Storage.load();
+    var K = Copy.timer;
+
+    var wakeLockLabel = state.settings.wakeLockEnabled
+      ? (WakeLock.isSupported() ? K.wakeLockOn : K.wakeLockUnsupported)
+      : K.wakeLockOff;
 
     var html =
       '<div class="screen__body">' +
       '<h2 class="sr-only" tabindex="-1">타이머 실행 중</h2>' +
       '<p class="timer-screen__goal">' + UI.escapeHtml(goal ? goal.title : '') + '</p>' +
       '<p class="timer-screen__action">' + UI.escapeHtml(session.actionText) + '</p>' +
+      '<div class="timer-ring-wrap">' +
+      '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+      '<circle class="timer-ring-track" cx="50" cy="50" r="' + RING_RADIUS + '"></circle>' +
+      '<circle class="timer-ring-fill" id="timer-ring-fill" cx="50" cy="50" r="' + RING_RADIUS + '" ' +
+      'stroke-dasharray="' + RING_CIRCUMFERENCE.toFixed(1) + '" stroke-dashoffset="0"></circle>' +
+      '</svg>' +
+      '<div class="timer-ring-center">' +
       '<div class="timer-display" id="timer-display" aria-hidden="true">15:00</div>' +
+      '<div class="timer-ring-status">집중 중</div>' +
+      '</div>' +
+      '</div>' +
       '<p class="sr-only" id="timer-live" aria-live="polite"></p>' +
-      '<div class="progress-track"><div class="progress-fill" id="timer-progress" style="width:0%"></div></div>' +
       '<p class="focus-message" id="focus-message"></p>' +
       '<div class="timer-screen__meta">' +
-      '<span id="wakelock-status">화면 유지: ' + (state.settings.wakeLockEnabled ? (WakeLock.isSupported() ? '켜짐' : '미지원') : '꺼짐') + '</span>' +
-      '<span id="notification-status">알림: ' + notificationStatusLabel(state) + '</span>' +
-      '<span id="hidden-count">이탈 ' + (session.hiddenCount || 0) + '회</span>' +
+      '<span class="status-chip status-chip--on" id="wakelock-status">' + UI.escapeHtml(wakeLockLabel) + '</span>' +
+      '<span class="status-chip" id="notification-status">' + UI.escapeHtml(K.notificationPrefix) + ' ' + notificationStatusLabel(state) + '</span>' +
+      '<span class="status-chip" id="hidden-count">' + UI.escapeHtml(K.focusedStatus) + '</span>' +
       '</div>' +
       '<div class="timer-screen__exit">' +
-      '<button type="button" class="btn-danger-quiet" id="mid-stop-btn">중도 종료</button>' +
+      '<button type="button" class="btn-danger-quiet" id="mid-stop-btn">' + UI.escapeHtml(K.stopButton) + '</button>' +
       '</div>' +
       '</div>';
 
@@ -452,18 +535,18 @@
 
     var displayEl = document.getElementById('timer-display');
     var liveEl = document.getElementById('timer-live');
-    var progressEl = document.getElementById('timer-progress');
+    var ringFillEl = document.getElementById('timer-ring-fill');
     var focusEl = document.getElementById('focus-message');
     var hiddenCountEl = document.getElementById('hidden-count');
 
     var elapsedSinceStart = Date.now() - session.startTime;
-    focusEl.textContent = FOCUS_MESSAGES[Math.min(FOCUS_MESSAGES.length - 1, Math.floor(elapsedSinceStart / C.FOCUS_MESSAGE_ROTATE_MS))];
+    var msgIndex = Math.min(K.focusMessages.length - 1, Math.floor(elapsedSinceStart / C.FOCUS_MESSAGE_ROTATE_MS));
+    focusEl.textContent = K.focusMessages[msgIndex];
 
     if (focusMessageTimer) global.clearInterval(focusMessageTimer);
-    var msgIndex = Math.floor(elapsedSinceStart / C.FOCUS_MESSAGE_ROTATE_MS);
     focusMessageTimer = global.setInterval(function () {
-      msgIndex = (msgIndex + 1) % FOCUS_MESSAGES.length;
-      focusEl.textContent = FOCUS_MESSAGES[msgIndex];
+      msgIndex = (msgIndex + 1) % K.focusMessages.length;
+      focusEl.textContent = K.focusMessages[msgIndex];
     }, C.FOCUS_MESSAGE_ROTATE_MS);
 
     var lastAnnouncedMinute = -1;
@@ -473,9 +556,11 @@
       if (!activeSession) return;
       var remaining = Timer.getRemainingMs(activeSession);
       displayEl.textContent = UI.formatMs(remaining);
-      var pct = 100 - Math.round((remaining / C.TIMER_DURATION_MS) * 100);
-      progressEl.style.width = Math.max(0, Math.min(100, pct)) + '%';
-      hiddenCountEl.textContent = '이탈 ' + (activeSession.hiddenCount || 0) + '회';
+      var elapsedFraction = 1 - (remaining / C.TIMER_DURATION_MS);
+      ringFillEl.style.strokeDashoffset = (RING_CIRCUMFERENCE * Math.max(0, Math.min(1, elapsedFraction))).toFixed(1);
+
+      var hc = activeSession.hiddenCount || 0;
+      hiddenCountEl.textContent = hc > 0 ? (K.exitedStatus + ' ' + hc + '회') : K.focusedStatus;
 
       var minuteLeft = Math.ceil(remaining / 60000);
       if (minuteLeft !== lastAnnouncedMinute && remaining > 0 && remaining % 60000 < 300) {
@@ -494,7 +579,7 @@
       var cancelBtn = document.createElement('button');
       cancelBtn.type = 'button';
       cancelBtn.className = 'btn-quiet';
-      cancelBtn.textContent = '시작 취소';
+      cancelBtn.textContent = Copy.goalDetail.cancelStart;
       cancelBtn.style.marginTop = '8px';
       cancelBtn.addEventListener('click', function () {
         if (startCancelTimer) global.clearTimeout(startCancelTimer);
@@ -514,11 +599,12 @@
   }
 
   function notificationStatusLabel(state) {
-    if (!Notifications.isSupported()) return '미지원';
+    var K = Copy.timer;
+    if (!Notifications.isSupported()) return K.notificationUnsupported;
     var perm = Notifications.getPermission();
-    if (perm === 'granted') return '허용됨';
-    if (perm === 'denied') return '거부됨';
-    return state.settings.notificationPreference === C.NOTIFICATION_PREFERENCE.SCREEN_ONLY ? '화면 알림만' : '미설정';
+    if (perm === 'granted') return K.notificationGranted;
+    if (perm === 'denied') return K.notificationDenied;
+    return state.settings.notificationPreference === C.NOTIFICATION_PREFERENCE.SCREEN_ONLY ? K.notificationScreenOnly : K.notificationUnset;
   }
 
   function handleTimerExpired() {
@@ -534,57 +620,33 @@
     Router.navigate('/finish', { replace: true });
   }
 
-  function openExitAttemptDialog() {
-    UI.showDialog({
-      title: '지금 나가면 집중은 끝납니다.',
-      body: '남은 15분을 지키세요.',
-      allowEscape: false,
-      actions: [
-        {
-          label: '계속 실행',
-          className: 'btn btn-primary',
-          onSelect: function () {
-            UI.closeOverlay();
-            Router.navigate('/timer', { replace: true });
-          }
-        },
-        {
-          label: '실행 종료',
-          className: 'btn-danger-quiet',
-          onSelect: function () {
-            UI.closeOverlay();
-            openMidStopDialog();
-          }
-        }
-      ]
-    });
-  }
-
   function openMidStopDialog() {
     var session = Timer.getActive();
     var remaining = session ? UI.formatMs(Timer.getRemainingMs(session)) : '';
+    var K = Copy.midStop;
     UI.showDialog({
-      title: '정말 지금 멈춰야 합니까?',
-      body: '불편한 것과 불가능한 것은 다릅니다. 남은 시간: ' + remaining,
+      title: K.title,
+      body: K.body + ' 남은 시간 ' + remaining,
+      allowEscape: false,
       actions: [
         {
-          label: '끝까지 한다',
+          label: K.keepGoing,
           className: 'btn btn-primary',
           onSelect: function () { UI.closeOverlay(); Router.navigate('/timer', { replace: true }); }
         },
         {
-          label: '행동을 절반으로 줄인다',
+          label: K.reduceAction,
           className: 'btn btn-secondary',
           onSelect: function () {
             Timer.applyFallback();
             UI.closeOverlay();
             Router.navigate('/timer', { replace: true });
             renderTimer();
-            UI.showToast('행동을 축소했습니다.');
+            UI.showToast(K.reducedToast);
           }
         },
         {
-          label: '오늘 실행을 포기한다',
+          label: K.stopThis,
           className: 'btn-danger-quiet',
           onSelect: function () {
             UI.closeOverlay();
@@ -596,27 +658,28 @@
   }
 
   function openAbandonConfirmDialog() {
+    var K = Copy.abandonConfirm;
     UI.showDialog({
-      title: '실행을 종료합니다.',
-      body: '지금 그만두면 문제는 해결되지 않고 그대로 남습니다.',
+      title: K.title,
+      body: K.body,
       actions: [
         {
-          label: '돌아가서 계속한다',
+          label: K.keepGoing,
           className: 'btn btn-primary',
           onSelect: function () { UI.closeOverlay(); Router.navigate('/timer', { replace: true }); }
         },
         {
-          label: '포기 기록을 남기고 종료한다',
+          label: K.confirmStop,
           className: 'btn-danger-quiet',
           onSelect: function () {
-            Timer.abandon('user_gave_up');
+            Timer.abandon('user_stopped');
             WakeLock.disable();
             if (timerTickUnsub) { timerTickUnsub(); timerTickUnsub = null; }
             if (focusMessageTimer) { global.clearInterval(focusMessageTimer); focusMessageTimer = null; }
             UI.closeOverlay();
             document.title = C.APP_NAME;
             Router.navigate('/home', { replace: true });
-            UI.showToast('오늘 실행을 종료했습니다.');
+            UI.showToast(K.stoppedToast);
           }
         }
       ]
@@ -631,20 +694,21 @@
       Router.navigate('/home', { replace: true });
       return;
     }
-    var goal = getGoal(session.goalId);
+    var K = Copy.finish;
 
     var html =
       '<div class="screen__body screen--center">' +
-      '<h1 tabindex="-1">15분이 끝났습니다.</h1>' +
-      '<p class="text-strong" style="margin-top:8px;">더 하지 마세요.</p>' +
-      '<p class="text-body" style="margin-top:16px;">한 번에 몰아서 하는 사람은 오래가지 못합니다. 멈출 줄 알아야 내일 다시 시작할 수 있습니다.</p>' +
+      '<div class="result-ring-wrap"><span class="icon icon--lg">' + Icons.ui('check') + '</span></div>' +
+      '<h1 tabindex="-1" style="text-align:center;margin-top:20px;">' + UI.escapeHtml(K.title) + '</h1>' +
+      '<p class="text-strong" style="text-align:center;margin-top:8px;">' + UI.escapeHtml(K.emphasis) + '</p>' +
+      '<p class="text-body" style="text-align:center;margin-top:16px;">' + UI.escapeHtml(K.body) + '</p>' +
       '<div class="card" style="margin-top:24px;">' +
-      '<div class="card__title">마무리 행동</div>' +
+      '<div class="card__title">' + UI.escapeHtml(K.actionCardTitle) + '</div>' +
       '<p class="text-body" style="margin-top:8px;">' + UI.escapeHtml(session.finishActionText) + '</p>' +
       '</div>' +
       '</div>' +
       '<div class="screen__footer">' +
-      '<button type="button" class="btn btn-primary" id="finish-btn">정리하고 끝낸다</button>' +
+      '<button type="button" class="btn btn-primary" id="finish-btn">' + UI.escapeHtml(K.finishButton) + '</button>' +
       '</div>';
 
     setScreen(html, { showNav: false, timer: true });
@@ -666,24 +730,29 @@
       Router.navigate('/home', { replace: true });
       return;
     }
+    var K = Copy.result;
     var goal = getGoal(record.goalId);
     var progress = state.goalProgress[record.goalId];
     var nextStep = goal && progress ? getStep(goal, Math.min(progress.currentStepNumber, goal.steps.length)) : null;
     var completedAll = goal && progress && progress.currentStepNumber > goal.steps.length;
+    var pct = goal && progress ? Math.round((progress.completedStepNumbers.length / goal.steps.length) * 100) : 0;
 
     var html =
       '<div class="screen__body screen--center">' +
-      '<h1 tabindex="-1">오늘 할 일은 끝났습니다.</h1>' +
-      '<p class="result-badge" style="margin-top:12px;">다시 시작할 수 있게 끝낸 것이 중요합니다.</p>' +
+      '<div class="result-ring-wrap"><span class="icon icon--lg">' + Icons.ui('check') + '</span></div>' +
+      '<h1 tabindex="-1" style="text-align:center;margin-top:20px;">' + UI.escapeHtml(K.title) + '</h1>' +
+      '<p class="result-badge" style="text-align:center;margin-top:12px;">' + UI.escapeHtml(K.subtitle) + '</p>' +
+      (goal ? '<div class="progress-track" style="margin-top:20px;"><div class="progress-fill" style="width:' + Math.max(4, pct) + '%;background:' + catVar(goal.categoryId) + ';"></div></div>' +
+        '<p class="text-caption" style="text-align:center;margin-top:6px;">' + UI.escapeHtml(goal.title) + ' · ' + pct + '%</p>' : '') +
       '<div class="card" style="margin-top:24px;">' +
-      '<div class="card__title">다음에 시작할 단계</div>' +
+      '<div class="card__title">' + UI.escapeHtml(K.nextLabel) + '</div>' +
       '<p class="text-body" style="margin-top:8px;">' +
-      (completedAll ? '모든 단계를 완료했습니다.' : UI.escapeHtml(nextStep ? nextStep.title : '')) +
+      (completedAll ? UI.escapeHtml(K.allDone) : UI.escapeHtml(nextStep ? nextStep.title : '')) +
       '</p>' +
       '</div>' +
       '</div>' +
       '<div class="screen__footer">' +
-      '<button type="button" class="btn btn-primary" id="result-home-btn">다음에 여기서 시작한다</button>' +
+      '<button type="button" class="btn btn-primary" id="result-home-btn">' + UI.escapeHtml(K.continueButton) + '</button>' +
       '</div>';
 
     setScreen(html, { showNav: false });
@@ -702,20 +771,22 @@
       Router.navigate('/home', { replace: true });
       return;
     }
+    var K = Copy.alreadyDone;
 
     var html =
       '<div class="screen__body screen--center">' +
-      '<h1 tabindex="-1">오늘 이미 실행했습니다.</h1>' +
-      '<p class="text-body" style="margin-top:16px;">더 하는 것이 성실함처럼 느껴질 수 있습니다. 하지만 몰아서 하고 지치는 방식은 지금까지 충분히 반복했습니다.</p>' +
-      '<p class="text-strong" style="margin-top:16px;">오늘은 멈추세요. 다음 실행은 내일입니다.</p>' +
+      '<h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1>' +
+      '<p class="text-body" style="margin-top:16px;">' + UI.escapeHtml(K.body) + '</p>' +
+      '<p class="text-strong" style="margin-top:16px;">' + UI.escapeHtml(K.emphasis) + '</p>' +
       '</div>' +
       '<div class="screen__footer">' +
-      '<button type="button" class="btn btn-primary" id="stop-today-btn">오늘은 종료</button>' +
-      '<a class="btn btn-secondary" style="margin-top:8px;" href="#/category/' + goal.categoryId + '">다른 목표 15분</a>' +
+      '<button type="button" class="btn btn-primary" id="stop-today-btn">' + UI.escapeHtml(K.stopToday) + '</button>' +
+      '<a class="btn btn-secondary" style="margin-top:8px;" href="#/category/' + goal.categoryId + '">' + UI.escapeHtml(K.otherGoal) + '</a>' +
       '<div style="margin-top:16px;text-align:center;">' +
-      '<button type="button" class="btn-danger-quiet longpress-track" id="force-rerun-btn" style="border-radius:4px;">' +
-      '<span class="longpress-fill"></span><span class="longpress-label">그래도 실행 (3초 길게 누르기)</span>' +
+      '<button type="button" class="btn-danger-quiet longpress-track" id="force-rerun-btn">' +
+      '<span class="longpress-fill"></span><span class="longpress-label">' + UI.escapeHtml(K.forceRerun) + '</span>' +
       '</button>' +
+      '<p class="text-caption" style="margin-top:4px;">' + UI.escapeHtml(K.forceRerunHint) + '</p>' +
       '</div>' +
       '</div>';
 
@@ -742,6 +813,7 @@
   function renderRecords() {
     var state = Storage.load();
     var stats = computeStats(state);
+    var K = Copy.records;
 
     var days = [];
     for (var i = 6; i >= 0; i--) {
@@ -749,7 +821,10 @@
       d.setDate(d.getDate() - i);
       var key = Storage.todayKey(d);
       var done = state.history.some(function (r) { return r.date === key && r.finished; });
-      days.push('<div class="record-day" data-done="' + done + '" title="' + key + '"></div>');
+      var weekdayIdx = (d.getDay() + 6) % 7;
+      days.push('<div class="record-day"><span class="record-day__label">' + WEEKDAY_LABELS[weekdayIdx] + '</span>' +
+        '<span class="record-day__dot" data-done="' + done + '" title="' + key + '">' +
+        (done ? '<span class="icon icon--sm">' + Icons.ui('check') + '</span>' : '') + '</span></div>');
     }
 
     var inProgressHtml = Object.keys(state.goalProgress).map(function (gid) {
@@ -757,62 +832,59 @@
       if (!goal) return '';
       var progress = state.goalProgress[gid];
       if (progress.currentStepNumber > goal.steps.length) return '';
-      return '<div class="card"><div class="card__title">' + UI.escapeHtml(goal.title) + '</div>' +
-        '<div class="card__meta">' + progress.currentStepNumber + ' / ' + goal.steps.length + '단계</div></div>';
-    }).join('') || '<p class="text-caption">진행 중인 목표가 없습니다.</p>';
+      return goalCardHtml(goal, state);
+    }).join('') || '<p class="empty-state">' + UI.escapeHtml(K.emptyInProgress) + '</p>';
 
     var abandonedHtml = state.history.filter(function (r) { return r.status === 'abandoned'; }).slice(-5).reverse().map(function (r) {
-      var g = getGoal(r.goalId);
-      return '<div class="card"><div class="card__title">' + UI.escapeHtml(g ? g.title : '') + '</div>' +
-        '<div class="card__meta">' + UI.escapeHtml(r.date) + ' 중도 종료</div></div>';
-    }).join('') || '<p class="text-caption">중도 종료한 기록이 없습니다.</p>';
+      return timelineItemHtml(getGoal(r.goalId), r, true);
+    }).join('') || '<p class="empty-state">' + UI.escapeHtml(K.emptyStopped) + '</p>';
 
     var recentHtml = stats.recentCompleted.map(function (r) {
-      var g = getGoal(r.goalId);
-      return '<div class="card"><div class="card__title">' + UI.escapeHtml(g ? g.title : '') + '</div>' +
-        '<div class="card__meta">' + UI.escapeHtml(r.date) + ' 완료</div></div>';
-    }).join('') || '<p class="text-caption">아직 완료한 행동이 없습니다.</p>';
+      return timelineItemHtml(getGoal(r.goalId), r, false);
+    }).join('') || '<p class="empty-state">' + UI.escapeHtml(K.emptyCompleted) + '</p>';
 
     var html =
-      '<div class="screen__header"><h1 tabindex="-1">기록</h1></div>' +
+      appBarHtml() +
+      '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1></div>' +
       '<div class="screen__body">' +
       '<div class="stat-row">' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.weeklyActiveDays + '</div><div class="stat-tile__label">이번 주 실행일</div></div>' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.totalCompletedSteps + '</div><div class="stat-tile__label">완료한 행동</div></div>' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.restartCount + '</div><div class="stat-tile__label">다시 시작한 횟수</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.weeklyActiveDays + '</div><div class="stat-tile__label">' + UI.escapeHtml(Copy.home.statLabels.weeklyActiveDays) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.totalCompletedSteps + '</div><div class="stat-tile__label">' + UI.escapeHtml(Copy.home.statLabels.totalCompletedSteps) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.restartCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(Copy.home.statLabels.restartCount) + '</div></div>' +
       '</div>' +
-      '<div class="section-title">최근 7일</div>' +
+      '<div class="section-title">' + UI.escapeHtml(K.recentDaysTitle) + '</div>' +
       '<div class="record-day-grid">' + days.join('') + '</div>' +
-      '<div class="section-title">진행 중인 목표</div>' + inProgressHtml +
-      '<div class="section-title">최근 완료한 행동</div>' + recentHtml +
-      '<div class="section-title">중도 종료한 행동</div>' + abandonedHtml +
-      '<div class="section-title">초기화</div>' +
-      '<button type="button" class="btn btn-secondary" id="reset-records-btn">실행 기록 초기화</button>' +
+      '<div class="section-title">' + UI.escapeHtml(K.inProgressTitle) + '</div>' + inProgressHtml +
+      '<div class="section-title">' + UI.escapeHtml(K.recentCompletedTitle) + '</div>' + recentHtml +
+      '<div class="section-title">' + UI.escapeHtml(K.stoppedTitle) + '</div>' + abandonedHtml +
+      '<div class="section-title">' + UI.escapeHtml(K.resetTitle) + '</div>' +
+      '<button type="button" class="btn btn-secondary" id="reset-records-btn">' + UI.escapeHtml(K.resetButton) + '</button>' +
       '</div>';
 
     setScreen(html, { navKey: 'records' });
 
     document.getElementById('reset-records-btn').addEventListener('click', function () {
+      var RK = K.resetDialog;
       UI.showDialog({
-        title: '기록을 초기화합니다.',
-        body: '지금까지의 실행 기록과 진행 상태가 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.',
+        title: RK.title,
+        body: RK.body,
         actions: [
-          { label: '취소', className: 'btn btn-secondary', onSelect: function () { UI.closeOverlay(); } },
+          { label: RK.cancel, className: 'btn btn-secondary', onSelect: function () { UI.closeOverlay(); } },
           {
-            label: '초기화',
+            label: RK.confirm,
             className: 'btn-danger-quiet',
             onSelect: function () {
               var onboarded = Storage.load().onboardingCompleted;
               var settings = Storage.load().settings;
               Storage.reset();
-              Storage.update(function (state) {
-                state.onboardingCompleted = onboarded;
-                state.settings = settings;
-                return state;
+              Storage.update(function (state2) {
+                state2.onboardingCompleted = onboarded;
+                state2.settings = settings;
+                return state2;
               });
               UI.closeOverlay();
               renderRecords();
-              UI.showToast('기록을 초기화했습니다.');
+              UI.showToast(RK.toast);
             }
           }
         ]
@@ -825,25 +897,39 @@
   function renderSettings() {
     var state = Storage.load();
     var s = state.settings;
+    var K = Copy.settings;
 
-    function toggleRow(id, label, checked) {
-      return '<div class="settings-row"><span>' + UI.escapeHtml(label) + '</span>' +
+    function toggleRow(id, iconKey, label, checked) {
+      return '<div class="settings-row"><span class="settings-row__icon"><span class="icon icon--sm">' + Icons.ui(iconKey) + '</span></span>' +
+        '<span class="settings-row__label">' + UI.escapeHtml(label) + '</span>' +
         '<button type="button" class="switch" id="' + id + '" role="switch" aria-checked="' + checked + '">' +
         '<span class="switch__knob"></span></button></div>';
     }
 
     var html =
-      '<div class="screen__header"><h1 tabindex="-1">설정</h1></div>' +
+      appBarHtml() +
+      '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1></div>' +
       '<div class="screen__body">' +
-      '<div class="settings-row"><span>알림 상태</span><span class="text-caption">' + notificationStatusLabel(state) + '</span></div>' +
-      toggleRow('toggle-sound', '종료음 사용', s.soundEnabled) +
-      toggleRow('toggle-vibration', '진동 사용', s.vibrationEnabled) +
-      toggleRow('toggle-wakelock', '화면 유지 사용', s.wakeLockEnabled) +
-      toggleRow('toggle-dark', '다크 모드', s.darkMode === 'dark') +
-      '<div class="section-title">기타</div>' +
-      '<button type="button" class="btn btn-secondary" id="replay-onboarding-btn">온보딩 다시 보기</button>' +
-      '<a class="btn btn-secondary" style="margin-top:8px;" href="#/install">PWA 설치 안내</a>' +
-      '<a class="btn btn-secondary" style="margin-top:8px;" href="#/about">앱 정보 및 알림 제한 안내</a>' +
+      '<div class="settings-row"><span class="settings-row__icon"><span class="icon icon--sm">' + Icons.ui('bell') + '</span></span>' +
+      '<span class="settings-row__label">' + UI.escapeHtml(K.notificationRow) + '</span>' +
+      '<span class="settings-row__value">' + notificationStatusLabel(state) + '</span></div>' +
+      toggleRow('toggle-sound', 'volume', K.soundToggle, s.soundEnabled) +
+      toggleRow('toggle-vibration', 'vibrate', K.vibrationToggle, s.vibrationEnabled) +
+      toggleRow('toggle-wakelock', 'info', K.wakeLockToggle, s.wakeLockEnabled) +
+      toggleRow('toggle-dark', 'moon', K.darkModeToggle, s.darkMode === 'dark') +
+      '<div class="section-title">' + UI.escapeHtml(K.moreSection) + '</div>' +
+      '<button type="button" class="settings-link" id="replay-onboarding-btn">' +
+      '<span class="settings-row__icon"><span class="icon icon--sm">' + Icons.ui('back') + '</span></span>' +
+      '<span class="settings-row__label">' + UI.escapeHtml(K.replayOnboarding) + '</span>' +
+      '<span class="settings-link__chevron icon icon--sm">' + Icons.ui('chevronRight') + '</span></button>' +
+      '<a class="settings-link" href="#/install">' +
+      '<span class="settings-row__icon"><span class="icon icon--sm">' + Icons.ui('download') + '</span></span>' +
+      '<span class="settings-row__label">' + UI.escapeHtml(K.installLink) + '</span>' +
+      '<span class="settings-link__chevron icon icon--sm">' + Icons.ui('chevronRight') + '</span></a>' +
+      '<a class="settings-link" href="#/about">' +
+      '<span class="settings-row__icon"><span class="icon icon--sm">' + Icons.ui('info') + '</span></span>' +
+      '<span class="settings-row__label">' + UI.escapeHtml(K.aboutLink) + '</span>' +
+      '<span class="settings-link__chevron icon icon--sm">' + Icons.ui('chevronRight') + '</span></a>' +
       '<p class="text-caption" style="margin-top:16px;text-align:center;">버전 ' + C.APP_VERSION + '</p>' +
       '</div>';
 
@@ -881,17 +967,19 @@
   function renderInstall() {
     var installed = PWA.isStandalone();
     var canPrompt = PWA.canPromptInstall();
+    var K = Copy.install;
 
     var html =
-      '<div class="screen__header"><h1 tabindex="-1">PWA 설치 안내</h1></div>' +
+      appBarHtml({ back: '#/settings', title: K.title }) +
+      '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1></div>' +
       '<div class="screen__body">' +
-      '<p class="text-body">홈 화면에 설치하면 주소창 없이 실행할 수 있습니다.</p>' +
+      '<p class="text-body">' + UI.escapeHtml(K.body) + '</p>' +
       (installed
-        ? '<p class="text-strong" style="margin-top:16px;">이미 홈 화면에 설치되어 실행 중입니다.</p>'
+        ? '<p class="text-strong" style="margin-top:16px;">' + UI.escapeHtml(K.alreadyInstalled) + '</p>'
         : (canPrompt
-          ? '<button type="button" class="btn btn-primary" id="install-btn" style="margin-top:16px;">지금 설치하기</button>'
-          : '<div class="card" style="margin-top:16px;"><div class="card__title">수동 설치 절차</div>' +
-            '<p class="text-body" style="margin-top:8px;">1. Chrome 메뉴 열기<br>2. "앱 설치" 또는 "홈 화면에 추가" 선택<br>3. 설치 후 홈 화면 아이콘으로 실행</p></div>')) +
+          ? '<button type="button" class="btn btn-primary" id="install-btn" style="margin-top:16px;">' + UI.escapeHtml(K.installButton) + '</button>'
+          : '<div class="card" style="margin-top:16px;"><div class="card__title">' + UI.escapeHtml(K.manualTitle) + '</div>' +
+            '<p class="text-body" style="margin-top:8px;white-space:pre-line;">' + UI.escapeHtml(K.manualSteps) + '</p></div>')) +
       '</div>';
 
     setScreen(html, { showNav: false });
@@ -901,7 +989,7 @@
       installBtn.addEventListener('click', function () {
         PWA.promptInstall().then(function (outcome) {
           if (outcome === 'accepted') {
-            UI.showToast('설치가 완료되었습니다.');
+            UI.showToast(K.installedToast);
             renderInstall();
           }
         });
@@ -912,14 +1000,14 @@
   /* ---------------- 앱 정보 ---------------- */
 
   function renderAbout() {
+    var K = Copy.about;
     var html =
-      '<div class="screen__header"><h1 tabindex="-1">앱 정보</h1></div>' +
+      appBarHtml({ back: '#/settings', title: K.title }) +
+      '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1></div>' +
       '<div class="screen__body">' +
       '<p class="text-body">' + UI.escapeHtml(C.APP_NAME) + ' · 버전 ' + C.APP_VERSION + '</p>' +
-      '<p class="text-body" style="margin-top:16px;">' +
-      '이 앱은 서버 없이 작동하는 모바일 웹앱입니다. 앱이나 브라우저를 완전히 종료하거나 휴대전화가 웹앱 실행을 중단하면 종료 알림이 늦어지거나 표시되지 않을 수 있습니다. 가장 확실한 사용을 위해 15분 동안 타이머 화면을 유지하세요.' +
-      '</p>' +
-      '<p class="text-caption" style="margin-top:16px;">회원가입과 로그인이 없으며, 모든 기록은 이 기기의 브라우저에만 저장됩니다. 외부 서버로 전송되지 않습니다.</p>' +
+      '<p class="text-body" style="margin-top:16px;">' + UI.escapeHtml(K.limitation) + '</p>' +
+      '<p class="text-caption" style="margin-top:16px;">' + UI.escapeHtml(K.privacy) + '</p>' +
       '</div>';
 
     setScreen(html, { showNav: false });
@@ -953,7 +1041,7 @@
         return;
       } else if (session.status === C.SESSION_STATUS.RUNNING && route.name !== 'timer') {
         Router.navigate('/timer', { replace: true });
-        global.setTimeout(openExitAttemptDialog, 30);
+        global.setTimeout(openMidStopDialog, 30);
         return;
       }
     } else if (route.name === 'timer' || route.name === 'finish') {
@@ -995,7 +1083,7 @@
       WakeLock.reacquireIfNeeded();
       if (wasHiddenDuringRun) {
         wasHiddenDuringRun = false;
-        UI.showToast('집중에서 벗어났습니다. 다시 지금 행동으로 돌아오세요.');
+        UI.showToast(Copy.timer.returnedToast);
       }
       var current = Router.current();
       if (current.name === 'timer') {
@@ -1006,16 +1094,32 @@
     }
   });
 
+  /* ---------------- 하단 내비게이션 ---------------- */
+
+  function initNav() {
+    var items = [
+      { key: 'home', href: '#/home', icon: 'home', label: '홈' },
+      { key: 'records', href: '#/records', icon: 'records', label: '기록' },
+      { key: 'settings', href: '#/settings', icon: 'settings', label: '설정' }
+    ];
+    navEl.innerHTML = items.map(function (item) {
+      return '<a class="bottom-nav__item" data-nav-key="' + item.key + '" href="' + item.href + '">' +
+        '<span class="icon">' + Icons.nav(item.icon) + '</span>' +
+        '<span>' + item.label + '</span></a>';
+    }).join('');
+  }
+
   /* ---------------- 초기화 ---------------- */
 
   function init() {
     var state = Storage.load();
     applyTheme(state);
     Timer.resumeTickingIfActive();
+    initNav();
 
     PWA.registerServiceWorker();
     PWA.onUpdateAvailable(function () {
-      UI.showToast('새 버전이 있습니다. 새로고침하면 적용됩니다.');
+      UI.showToast(Copy.updateAvailableToast);
     });
 
     Router.on(render);

@@ -126,15 +126,15 @@
     showTimerEndNotification: function () {
       return showViaServiceWorkerOrDirect(
         '15분이 끝났습니다.',
-        '더 하지 마세요. 지금 하던 일을 정리하고 오늘은 여기까지 마무리하세요.',
+        '오늘은 여기서 멈춥니다. 하던 일을 정리해 주세요.',
         'fms-timer-end'
       );
     },
 
     showHiddenExitNotification: function () {
       return showViaServiceWorkerOrDirect(
-        '지금 다른 곳으로 가고 있습니다.',
-        '남은 15분을 지키세요. 지금 할 일은 하나뿐입니다.',
+        '화면을 벗어났습니다.',
+        '남은 시간 동안 지금 하던 일로 돌아와 주세요.',
         'fms-hidden-exit'
       );
     }

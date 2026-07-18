@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>15분 시동 - 변명 끝. 15분 시작.</title>
 <meta name="description" content="자기계발 목표를 15분 단위의 작은 행동으로 나눠 지금 바로 실행하는 모바일 전용 PWA. 계획보다 실행, 완벽보다 완료.">
-<meta name="theme-color" content="#0a0a0a">
+<meta name="theme-color" content="#f7f5f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121214" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,15 +32,13 @@
 
   <main id="app-root" class="screen" role="main" aria-live="off"></main>
 
-  <nav id="bottom-nav" class="bottom-nav" aria-label="주요 이동">
-    <a class="bottom-nav__item" data-nav-key="home" href="#/home">홈</a>
-    <a class="bottom-nav__item" data-nav-key="records" href="#/records">기록</a>
-    <a class="bottom-nav__item" data-nav-key="settings" href="#/settings">설정</a>
-  </nav>
+  <nav id="bottom-nav" class="bottom-nav" aria-label="주요 이동"></nav>
 </div>
 
 <script src="./data/goals.js"></script>
 <script src="./js/constants.js"></script>
+<script src="./js/copy.js"></script>
+<script src="./js/icons.js"></script>
 <script src="./js/storage.js"></script>
 <script src="./js/timer.js"></script>
 <script src="./js/wake-lock.js"></script>
