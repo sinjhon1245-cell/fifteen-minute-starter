@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>데이터 검증 (개발용)</title>
+<style>body{font-family:sans-serif;padding:16px;white-space:pre-wrap;font-size:14px;line-height:1.6}</style>
+</head>
+<body>
+<div id="out">검증 중...</div>
+<script src="../data/goals.js"></script>
+<script src="validate-goals.js"></script>
+<script>
+  var result = FMS_ValidateGoals(FMS_CATEGORIES, FMS_GOALS);
+  var out = document.getElementById('out');
+  var lines = [];
+  lines.push('=== 데이터 검증 결과 ===');
+  lines.push('분야 수: ' + result.stats.categories);
+  lines.push('목표 수: ' + result.stats.goals);
+  lines.push('전체 단계 수: ' + result.stats.totalSteps);
+  lines.push('');
+  lines.push(result.ok ? '결과: 통과 (PASS)' : '결과: 실패 (FAIL)');
+  if (result.errors.length) {
+    lines.push('');
+    lines.push('오류 ' + result.errors.length + '건:');
+    result.errors.forEach(function (e) { lines.push(' - ' + e); });
+  }
+  if (result.warnings.length) {
+    lines.push('');
+    lines.push('경고 ' + result.warnings.length + '건:');
+    result.warnings.forEach(function (w) { lines.push(' - ' + w); });
+  }
+  out.textContent = lines.join('\n');
+</script>
+</body>
+</html>

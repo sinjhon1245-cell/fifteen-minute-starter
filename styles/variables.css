@@ -1,0 +1,67 @@
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+    "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
+
+  --color-bg: #ffffff;
+  --color-surface: #f4f4f4;
+  --color-surface-raised: #ffffff;
+  --color-text: #111111;
+  --color-text-muted: #6b6b6b;
+  --color-text-faint: #9a9a9a;
+  --color-border: #e2e2e2;
+  --color-accent: #ff4319;
+  --color-accent-text: #ffffff;
+  --color-danger: #d92d20;
+  --color-focus-ring: #111111;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --button-height: 56px;
+  --touch-min: 44px;
+
+  --app-max-width: 480px;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #0a0a0a;
+  --color-surface: #171717;
+  --color-surface-raised: #1f1f1f;
+  --color-text: #f5f5f5;
+  --color-text-muted: #a3a3a3;
+  --color-text-faint: #737373;
+  --color-border: #2b2b2b;
+  --color-accent: #ff5a33;
+  --color-accent-text: #0a0a0a;
+  --color-danger: #ff6259;
+  --color-focus-ring: #f5f5f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #0a0a0a;
+    --color-surface: #171717;
+    --color-surface-raised: #1f1f1f;
+    --color-text: #f5f5f5;
+    --color-text-muted: #a3a3a3;
+    --color-text-faint: #737373;
+    --color-border: #2b2b2b;
+    --color-accent: #ff5a33;
+    --color-accent-text: #0a0a0a;
+    --color-danger: #ff6259;
+    --color-focus-ring: #f5f5f5;
+  }
+}

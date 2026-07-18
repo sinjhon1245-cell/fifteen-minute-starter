@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>15분 시동 - 변명 끝. 15분 시작.</title>
+<meta name="description" content="자기계발 목표를 15분 단위의 작은 행동으로 나눠 지금 바로 실행하는 모바일 전용 PWA. 계획보다 실행, 완벽보다 완료.">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="color-scheme" content="light dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="15분 시동">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./assets/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="./styles/reset.css">
+<link rel="stylesheet" href="./styles/variables.css">
+<link rel="stylesheet" href="./styles/layout.css">
+<link rel="stylesheet" href="./styles/components.css">
+<link rel="stylesheet" href="./styles/screens.css">
+</head>
+<body>
+
+<p class="desktop-banner">이 서비스는 스마트폰 실행에 맞춰 제작되었습니다.</p>
+
+<div class="app-shell">
+  <noscript>
+    <div style="padding:24px;">이 앱을 사용하려면 자바스크립트를 허용해야 합니다.</div>
+  </noscript>
+
+  <main id="app-root" class="screen" role="main" aria-live="off"></main>
+
+  <nav id="bottom-nav" class="bottom-nav" aria-label="주요 이동">
+    <a class="bottom-nav__item" data-nav-key="home" href="#/home">홈</a>
+    <a class="bottom-nav__item" data-nav-key="records" href="#/records">기록</a>
+    <a class="bottom-nav__item" data-nav-key="settings" href="#/settings">설정</a>
+  </nav>
+</div>
+
+<script src="./data/goals.js"></script>
+<script src="./js/constants.js"></script>
+<script src="./js/storage.js"></script>
+<script src="./js/timer.js"></script>
+<script src="./js/wake-lock.js"></script>
+<script src="./js/notifications.js"></script>
+<script src="./js/router.js"></script>
+<script src="./js/ui.js"></script>
+<script src="./js/accessibility.js"></script>
+<script src="./js/pwa.js"></script>
+<script src="./js/app.js"></script>
+</body>
+</html>
