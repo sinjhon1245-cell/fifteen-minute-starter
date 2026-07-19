@@ -1,7 +1,7 @@
 {
-  "name": "15분 시동",
-  "short_name": "15분 시동",
-  "description": "변명 끝. 15분 시작. 자기계발 목표를 15분 단위의 작은 행동으로 나눠 지금 바로 실행하는 모바일 PWA.",
+  "name": "15분만",
+  "short_name": "15분만",
+  "description": "지금 할 행동 하나를 고르고 15분 동안 실행하는 모바일 도구입니다.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

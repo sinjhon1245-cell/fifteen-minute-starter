@@ -1,4 +1,4 @@
-/* 15분 시동 - 앱 진입점 및 화면 렌더링 (SPA 오케스트레이션) */
+/* 15분만 - 앱 진입점 및 화면 렌더링 (SPA 오케스트레이션) */
 (function (global) {
   'use strict';
 
@@ -26,6 +26,7 @@
   var timerTickUnsub = null;
   var startCancelTimer = null;
   var onboardingSlideIndex = 0;
+  var selectedProgressResult = null;
 
   var RING_RADIUS = 44;
   var RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -55,11 +56,6 @@
     return 'var(--cat-' + categoryId + (kind === 'soft' ? '-soft' : '') + ')';
   }
 
-  function categoryIconHtml(categoryId, size) {
-    var sizeClass = size === 'lg' ? ' icon--lg' : '';
-    return '<span class="icon' + sizeClass + '" style="color:' + catVar(categoryId) + ';">' + Icons.category(categoryId) + '</span>';
-  }
-
   /* ---------------- 통계 헬퍼 ---------------- */
 
   function startOfWeek(date) {
@@ -72,7 +68,12 @@
   }
 
   function computeStats(state) {
-    var finished = state.history.filter(function (r) { return r.finished; });
+    var history = state.history;
+    var finished = history.filter(function (r) { return r.finished; });
+    var partial = history.filter(function (r) { return !r.finished && r.progressResult === C.PROGRESS_RESULT.PARTIAL; });
+    var startedOnly = history.filter(function (r) { return !r.finished && r.progressResult === C.PROGRESS_RESULT.STARTED_ONLY; });
+    var startedAny = history.filter(function (r) { return !r.finished; });
+
     var weekStart = startOfWeek(new Date());
     var weekDates = {};
     finished.forEach(function (r) {
@@ -82,20 +83,10 @@
       }
     });
 
-    var uniqueDates = Array.from(new Set(finished.map(function (r) { return r.date; }))).sort();
-    var restartCount = 0;
-    var prevDate = null;
-    uniqueDates.forEach(function (dateKey) {
-      if (!prevDate) {
-        restartCount += 1;
-      } else {
-        var prev = new Date(prevDate + 'T00:00:00');
-        var cur = new Date(dateKey + 'T00:00:00');
-        var diffDays = Math.round((cur - prev) / 86400000);
-        if (diffDays > 1) restartCount += 1;
-      }
-      prevDate = dateKey;
-    });
+    var withDuration = history.filter(function (r) { return typeof r.actualDurationMs === 'number'; });
+    var avgDurationMs = withDuration.length
+      ? withDuration.reduce(function (sum, r) { return sum + r.actualDurationMs; }, 0) / withDuration.length
+      : null;
 
     var activeGoalIds = Object.keys(state.goalProgress).filter(function (gid) {
       var goal = getGoal(gid);
@@ -103,12 +94,19 @@
       return goal && progress.currentStepNumber <= goal.steps.length;
     });
 
+    var recent = history.slice().sort(function (a, b) {
+      return (b.completedAt || b.actualEndTime || 0) - (a.completedAt || a.actualEndTime || 0);
+    }).slice(0, 8);
+
     return {
       weeklyActiveDays: Object.keys(weekDates).length,
-      totalCompletedSteps: finished.length,
-      restartCount: restartCount,
+      completedCount: finished.length,
+      startedCount: startedAny.length,
+      partialCount: partial.length,
+      startedOnlyCount: startedOnly.length,
+      avgDurationMs: avgDurationMs,
       inProgressGoalCount: activeGoalIds.length,
-      recentCompleted: finished.slice(-5).reverse()
+      recent: recent
     };
   }
 
@@ -215,9 +213,11 @@
       return '<span class="onboarding-dots__dot" aria-current="' + (i === idx ? 'true' : 'false') + '"></span>';
     }).join('');
 
+    var titleHtml = UI.escapeHtml(slide.title).replace(/\n/g, '<br>');
+
     var html =
       '<div class="screen__body" style="justify-content:center;">' +
-      '<h1 tabindex="-1">' + UI.escapeHtml(slide.title) + '</h1>' +
+      '<h1 tabindex="-1">' + titleHtml + '</h1>' +
       '<p class="text-body" style="margin-top:16px;">' + UI.escapeHtml(slide.body) + '</p>' +
       '<div class="onboarding-dots">' + dots + '</div>' +
       '</div>' +
@@ -276,19 +276,18 @@
         '</a>';
     }).join('');
 
-    var recentHtml = stats.recentCompleted.length
-      ? stats.recentCompleted.map(function (r) {
-        var g = getGoal(r.goalId);
-        return timelineItemHtml(g, r, false);
-      }).join('')
+    var recentHtml = stats.recent.length
+      ? stats.recent.slice(0, 5).map(function (r) { return recordItemHtml(r); }).join('')
       : '<p class="empty-state">' + UI.escapeHtml(K.emptyRecent) + '</p>';
+
+    var showInstallCard = !PWA.isStandalone() && !state.installCompleted;
 
     var html =
       appBarHtml() +
       '<div class="hero">' +
       '<div class="hero__eyebrow"><span class="text-eyebrow">' + UI.escapeHtml(K.eyebrow) + '</span>' +
       '<span class="text-caption">' + UI.escapeHtml(Storage.todayKey()) + '</span></div>' +
-      '<h1 class="hero__title" tabindex="-1">' + UI.escapeHtml(K.heroTitle) + '</h1>' +
+      '<h1 class="hero__title" tabindex="-1">' + UI.escapeHtml(K.heroTitle).replace(/\n/g, '<br>') + '</h1>' +
       '<p class="text-strong hero__accent">' + UI.escapeHtml(K.heroAccent) + '</p>' +
       '</div>' +
       '<div class="screen__body">' +
@@ -313,26 +312,60 @@
       '<div class="section-title">' + UI.escapeHtml(K.statsTitle) + '</div>' +
       '<div class="stat-row">' +
       '<div class="stat-tile"><div class="stat-tile__value">' + stats.weeklyActiveDays + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.weeklyActiveDays) + '</div></div>' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.totalCompletedSteps + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.totalCompletedSteps) + '</div></div>' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.restartCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.restartCount) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.completedCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.completedCount) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.startedCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.startedCount) + '</div></div>' +
       '</div>' +
+
+      (showInstallCard ?
+        '<div class="section-title">&nbsp;</div>' +
+        '<div class="install-card" id="home-install-card">' +
+        '<span class="install-card__icon"><span class="icon">' + Icons.ui('install') + '</span></span>' +
+        '<span class="install-card__body">' +
+        '<span class="install-card__title">' + UI.escapeHtml(Copy.install.cardTitle) + '</span>' +
+        '<span class="install-card__desc">' + UI.escapeHtml(Copy.install.cardBody) + '</span>' +
+        '</span>' +
+        '<button type="button" class="install-card__action" id="home-install-btn">설치</button>' +
+        '</div>'
+        : '') +
 
       '<div class="section-title">' + UI.escapeHtml(K.recentTitle) + '</div>' +
       recentHtml +
       '</div>';
 
     setScreen(html, { navKey: 'home' });
+
+    var installBtn = document.getElementById('home-install-btn');
+    if (installBtn) {
+      installBtn.addEventListener('click', handleInstallClick);
+    }
   }
 
-  function timelineItemHtml(goal, record, stopped) {
-    var iconClass = stopped ? 'timeline-item__icon timeline-item__icon--stopped' : 'timeline-item__icon';
-    var iconSvg = stopped ? Icons.ui('close') : Icons.ui('check');
-    var suffix = stopped ? Copy.records.stoppedSuffix : Copy.records.completedSuffix;
+  function handleInstallClick() {
+    if (PWA.canPromptInstall()) {
+      PWA.promptInstall().then(function (outcome) {
+        if (outcome === 'accepted') {
+          UI.showToast(Copy.install.installedToast);
+          render(Router.current());
+        }
+      });
+    } else {
+      Router.navigate('/install');
+    }
+  }
+
+  function recordItemHtml(r) {
+    var g = getGoal(r.goalId);
+    var title = r.goalTitle || (g ? g.title : '삭제된 목표');
+    var resultLabel = Copy.records.progressResultLabel[r.progressResult] || Copy.records.progressResultLabel.unknown;
+    var isDone = r.finished;
+    var iconClass = isDone ? 'timeline-item__icon' : 'timeline-item__icon timeline-item__icon--stopped';
+    var iconSvg = isDone ? Icons.ui('check') : Icons.ui('flag');
+    var durationLabel = typeof r.actualDurationMs === 'number' ? Timer.formatDuration(r.actualDurationMs) : '시간 기록 없음';
     return '<div class="timeline-item">' +
       '<span class="' + iconClass + '"><span class="icon icon--sm">' + iconSvg + '</span></span>' +
       '<span class="timeline-item__body">' +
-      '<span class="timeline-item__title">' + UI.escapeHtml(goal ? goal.title : '') + '</span>' +
-      '<span class="timeline-item__meta">' + UI.escapeHtml(record.date) + suffix + '</span>' +
+      '<span class="timeline-item__title">' + UI.escapeHtml(title) + '</span>' +
+      '<span class="timeline-item__meta">' + UI.escapeHtml(r.date || '') + ' · ' + UI.escapeHtml(durationLabel) + ' · ' + UI.escapeHtml(resultLabel) + '</span>' +
       '</span></div>';
   }
 
@@ -341,6 +374,7 @@
   function renderCategory(categoryId) {
     var category = getCategory(categoryId);
     if (!category) {
+      UI.showToast(Copy.goalDetail.unknownGoalToast);
       Router.navigate('/home', { replace: true });
       return;
     }
@@ -370,6 +404,7 @@
   function renderGoalDetail(goalId) {
     var goal = getGoal(goalId);
     if (!goal) {
+      UI.showToast(Copy.goalDetail.unknownGoalToast);
       Router.navigate('/home', { replace: true });
       return;
     }
@@ -428,8 +463,10 @@
     Timer.start({
       categoryId: goal.categoryId,
       goalId: goal.id,
+      goalTitle: goal.title,
       stepId: step.id,
       stepNumber: step.stepNumber,
+      stepTitle: step.title,
       actionText: step.action,
       fallbackActionText: step.fallbackAction,
       finishActionText: step.finishAction,
@@ -451,9 +488,14 @@
 
   /* ---------------- 알림 권한 바텀시트 ---------------- */
 
-  function openNotificationSheet() {
+  function openNotificationSheet(calledFromSettings) {
     var K = Copy.notificationSheet;
-    UI.showSheet({
+    var busy = false;
+    var doReturnFocus = calledFromSettings
+      ? function () { renderSettings(); }
+      : returnFocusToTimerHeading;
+
+    var close = UI.showSheet({
       title: K.title,
       body: K.body,
       actions: [
@@ -461,6 +503,13 @@
           label: K.allow,
           className: 'btn btn-primary',
           onSelect: function () {
+            if (busy) return;
+            busy = true;
+            var allowBtn = document.querySelector('.sheet__actions .btn-primary');
+            var screenBtn = document.querySelector('.sheet__actions .btn-secondary');
+            if (allowBtn) allowBtn.disabled = true;
+            if (screenBtn) screenBtn.disabled = true;
+
             Notifications.requestPermission().then(function (result) {
               Storage.update(function (state) {
                 state.settings.notificationPreference = result === 'granted'
@@ -468,6 +517,24 @@
                   : C.NOTIFICATION_PREFERENCE.SCREEN_ONLY;
                 return state;
               });
+              return result;
+            }).catch(function () {
+              Storage.update(function (state) {
+                state.settings.notificationPreference = C.NOTIFICATION_PREFERENCE.SCREEN_ONLY;
+                return state;
+              });
+              return 'default';
+            }).then(function (result) {
+              UI.closeOverlay();
+              if (result === 'granted') {
+                UI.showToast(K.toastGranted);
+              } else if (result === 'denied') {
+                UI.showToast(K.toastDenied);
+              } else {
+                UI.showToast(K.toastDismissed);
+              }
+              refreshTimerStatusIfPresent();
+              doReturnFocus();
             });
           }
         },
@@ -475,14 +542,54 @@
           label: K.screenOnly,
           className: 'btn btn-secondary',
           onSelect: function () {
+            if (busy) return;
+            busy = true;
             Storage.update(function (state) {
               state.settings.notificationPreference = C.NOTIFICATION_PREFERENCE.SCREEN_ONLY;
               return state;
             });
+            UI.closeOverlay();
+            UI.showToast(K.toastScreenOnly);
+            refreshTimerStatusIfPresent();
+            doReturnFocus();
           }
         }
       ]
     });
+
+    global.setTimeout(function () {
+      var hintEls = document.querySelectorAll('.sheet__actions button');
+      if (hintEls[0]) {
+        var hint0 = document.createElement('span');
+        hint0.className = 'text-caption';
+        hint0.style.display = 'block';
+        hint0.style.marginTop = '4px';
+        hint0.textContent = K.allowHint;
+        hintEls[0].insertAdjacentElement('afterend', hint0);
+      }
+      if (hintEls[1]) {
+        var hint1 = document.createElement('span');
+        hint1.className = 'text-caption';
+        hint1.style.display = 'block';
+        hint1.style.marginTop = '4px';
+        hint1.textContent = K.screenOnlyHint;
+        hintEls[1].insertAdjacentElement('afterend', hint1);
+      }
+    }, 0);
+
+    return close;
+  }
+
+  function returnFocusToTimerHeading() {
+    var heading = document.querySelector('.timer-screen__goal, h1, h2');
+    if (heading) A11y.focusElement(heading);
+  }
+
+  function refreshTimerStatusIfPresent() {
+    var notifStatus = document.getElementById('notification-status');
+    if (!notifStatus) return;
+    var state = Storage.load();
+    notifStatus.textContent = Copy.timer.notificationPrefix + ' ' + notificationStatusLabel(state);
   }
 
   /* ---------------- 타이머 실행 화면 ---------------- */
@@ -501,11 +608,15 @@
       ? (WakeLock.isSupported() ? K.wakeLockOn : K.wakeLockUnsupported)
       : K.wakeLockOff;
 
+    var fallbackLabel = session.fallbackUsed ? K.fallbackApplied : K.fallbackAvailable;
+
     var html =
       '<div class="screen__body">' +
       '<h2 class="sr-only" tabindex="-1">타이머 실행 중</h2>' +
       '<p class="timer-screen__goal">' + UI.escapeHtml(goal ? goal.title : '') + '</p>' +
-      '<p class="timer-screen__action">' + UI.escapeHtml(session.actionText) + '</p>' +
+      '<p class="timer-screen__action">' + UI.escapeHtml(session.actionText) +
+      (session.fallbackUsed ? '<br><span class="text-caption">' + UI.escapeHtml(K.fallbackAppliedNote) + '</span>' : '') +
+      '</p>' +
       '<div class="timer-ring-wrap">' +
       '<svg viewBox="0 0 100 100" aria-hidden="true">' +
       '<circle class="timer-ring-track" cx="50" cy="50" r="' + RING_RADIUS + '"></circle>' +
@@ -523,8 +634,10 @@
       '<span class="status-chip status-chip--on" id="wakelock-status">' + UI.escapeHtml(wakeLockLabel) + '</span>' +
       '<span class="status-chip" id="notification-status">' + UI.escapeHtml(K.notificationPrefix) + ' ' + notificationStatusLabel(state) + '</span>' +
       '<span class="status-chip" id="hidden-count">' + UI.escapeHtml(K.focusedStatus) + '</span>' +
+      '<span class="status-chip' + (session.fallbackUsed ? ' status-chip--warn' : '') + '" id="fallback-status">' + UI.escapeHtml(fallbackLabel) + '</span>' +
       '</div>' +
       '<div class="timer-screen__exit">' +
+      '<button type="button" class="btn-quiet" id="early-done-btn">' + UI.escapeHtml(K.earlyDoneButton) + '</button>' +
       '<button type="button" class="btn-danger-quiet" id="mid-stop-btn">' + UI.escapeHtml(K.stopButton) + '</button>' +
       '</div>' +
       '</div>';
@@ -595,7 +708,8 @@
       }, C.START_CANCEL_WINDOW_MS - elapsedSinceLaunch);
     }
 
-    document.getElementById('mid-stop-btn').addEventListener('click', openMidStopDialog);
+    document.getElementById('mid-stop-btn').addEventListener('click', openMidStopSheet);
+    document.getElementById('early-done-btn').addEventListener('click', openEarlyCompleteSheet);
   }
 
   function notificationStatusLabel(state) {
@@ -607,79 +721,128 @@
     return state.settings.notificationPreference === C.NOTIFICATION_PREFERENCE.SCREEN_ONLY ? K.notificationScreenOnly : K.notificationUnset;
   }
 
-  function handleTimerExpired() {
+  function stopTimerScreenTimers() {
     if (timerTickUnsub) { timerTickUnsub(); timerTickUnsub = null; }
     if (focusMessageTimer) { global.clearInterval(focusMessageTimer); focusMessageTimer = null; }
+  }
 
+  function handleTimerExpired() {
+    stopTimerScreenTimers();
     Notifications.playEndSound();
     Notifications.vibrate([200, 100, 200, 100, 400]);
     Notifications.showTimerEndNotification();
-    Timer.markFinishPending();
+    Timer.markFinishPending(C.FINISH_TYPE.TIMER_COMPLETE, { skipFinishScreen: false });
     WakeLock.disable();
     document.title = C.APP_NAME + ' · 종료됨';
     Router.navigate('/finish', { replace: true });
   }
 
-  function openMidStopDialog() {
-    var session = Timer.getActive();
-    var remaining = session ? UI.formatMs(Timer.getRemainingMs(session)) : '';
-    var K = Copy.midStop;
-    UI.showDialog({
+  /* ---------------- 먼저 끝냈어요 ---------------- */
+
+  function openEarlyCompleteSheet() {
+    var K = Copy.earlyComplete;
+    UI.showActionSheet({
       title: K.title,
-      body: K.body + ' 남은 시간 ' + remaining,
-      allowEscape: false,
+      body: K.body,
       actions: [
         {
-          label: K.keepGoing,
-          className: 'btn btn-primary',
-          onSelect: function () { UI.closeOverlay(); Router.navigate('/timer', { replace: true }); }
+          title: K.keepGoing,
+          body: K.keepGoingHint,
+          icon: Icons.ui('play'),
+          variant: 'primary',
+          onSelect: function () { UI.closeOverlay(); returnFocusToTimerHeading(); }
         },
         {
-          label: K.reduceAction,
-          className: 'btn btn-secondary',
-          onSelect: function () {
-            Timer.applyFallback();
-            UI.closeOverlay();
-            Router.navigate('/timer', { replace: true });
-            renderTimer();
-            UI.showToast(K.reducedToast);
-          }
-        },
-        {
-          label: K.stopThis,
-          className: 'btn-danger-quiet',
+          title: K.recordNow,
+          body: K.recordNowHint,
+          icon: Icons.ui('flag'),
+          variant: 'danger',
           onSelect: function () {
             UI.closeOverlay();
-            openAbandonConfirmDialog();
+            stopTimerScreenTimers();
+            Timer.markFinishPending(C.FINISH_TYPE.EARLY_COMPLETE, { skipFinishScreen: true });
+            WakeLock.disable();
+            document.title = C.APP_NAME;
+            Router.navigate('/record-result', { replace: true });
           }
         }
       ]
     });
   }
 
-  function openAbandonConfirmDialog() {
-    var K = Copy.abandonConfirm;
-    UI.showDialog({
+  /* ---------------- 이번 실행을 멈출까요? ---------------- */
+
+  function openMidStopSheet() {
+    var session = Timer.getActive();
+    if (!session) return;
+    var remaining = UI.formatMs(Timer.getRemainingMs(session));
+    var K = Copy.midStop;
+    var canReduce = Timer.canUseFallback(session);
+
+    UI.showActionSheet({
+      title: K.title,
+      body: K.body,
+      chip: K.remainingLabel + ' ' + remaining,
+      actions: [
+        {
+          title: K.keepGoing.title,
+          body: K.keepGoing.body,
+          icon: Icons.ui('play'),
+          variant: 'primary',
+          onSelect: function () { UI.closeOverlay(); returnFocusToTimerHeading(); }
+        },
+        {
+          title: canReduce ? K.reduce.title : K.reduce.usedTitle,
+          body: canReduce ? K.reduce.body : K.reduce.usedBody,
+          note: canReduce ? K.reduce.note : null,
+          icon: canReduce ? Icons.ui('shrink') : Icons.ui('lock'),
+          disabled: !canReduce,
+          onSelect: function () {
+            Timer.applyFallback();
+            UI.closeOverlay();
+            renderTimer();
+            UI.showToast(K.reducedToast);
+          }
+        },
+        {
+          title: K.recordAndStop.title,
+          body: K.recordAndStop.body,
+          icon: Icons.ui('stopCircle'),
+          variant: 'danger',
+          onSelect: function () {
+            UI.closeOverlay();
+            openSecondConfirmSheet();
+          }
+        }
+      ]
+    });
+  }
+
+  function openSecondConfirmSheet() {
+    var K = Copy.secondConfirm;
+    UI.showActionSheet({
       title: K.title,
       body: K.body,
       actions: [
         {
-          label: K.keepGoing,
-          className: 'btn btn-primary',
-          onSelect: function () { UI.closeOverlay(); Router.navigate('/timer', { replace: true }); }
+          title: K.keepGoing,
+          body: K.keepGoingHint,
+          icon: Icons.ui('play'),
+          variant: 'primary',
+          onSelect: function () { UI.closeOverlay(); returnFocusToTimerHeading(); }
         },
         {
-          label: K.confirmStop,
-          className: 'btn-danger-quiet',
+          title: K.confirmStop,
+          body: K.confirmStopHint,
+          icon: Icons.ui('stopCircle'),
+          variant: 'danger',
           onSelect: function () {
-            Timer.abandon('user_stopped');
-            WakeLock.disable();
-            if (timerTickUnsub) { timerTickUnsub(); timerTickUnsub = null; }
-            if (focusMessageTimer) { global.clearInterval(focusMessageTimer); focusMessageTimer = null; }
             UI.closeOverlay();
+            stopTimerScreenTimers();
+            Timer.markFinishPending(C.FINISH_TYPE.MANUAL_END, { skipFinishScreen: true });
+            WakeLock.disable();
             document.title = C.APP_NAME;
-            Router.navigate('/home', { replace: true });
-            UI.showToast(K.stoppedToast);
+            Router.navigate('/record-result', { replace: true });
           }
         }
       ]
@@ -690,7 +853,7 @@
 
   function renderFinish() {
     var session = Timer.getActive();
-    if (!session || session.status !== C.SESSION_STATUS.FINISH_PENDING) {
+    if (!session || session.status !== C.SESSION_STATUS.FINISH_PENDING || session.skipFinishScreen) {
       Router.navigate('/home', { replace: true });
       return;
     }
@@ -715,8 +878,68 @@
     document.title = C.APP_NAME;
 
     document.getElementById('finish-btn').addEventListener('click', function () {
-      var record = Timer.finalizeCompletion();
+      Timer.proceedToRecordResult();
+      Router.navigate('/record-result', { replace: true });
+    });
+  }
+
+  /* ---------------- 결과 기록 ---------------- */
+
+  function renderRecordResult() {
+    var session = Timer.getActive();
+    if (!session || session.status !== C.SESSION_STATUS.FINISH_PENDING) {
+      Router.navigate('/home', { replace: true });
+      return;
+    }
+    var K = Copy.resultRecord;
+    var goal = getGoal(session.goalId);
+    var durationMs = Math.max(0, (session.actualEndTime || Date.now()) - session.startTime);
+    selectedProgressResult = null;
+
+    var optionsHtml = K.options.map(function (opt) {
+      return '<button type="button" class="choice-card" data-value="' + opt.value + '" aria-pressed="false">' +
+        '<span class="choice-card__check"><span class="icon">' + Icons.ui('check') + '</span></span>' +
+        '<span class="choice-card__text"><span class="choice-card__title">' + UI.escapeHtml(opt.title) + '</span>' +
+        '<span class="choice-card__body">' + UI.escapeHtml(opt.body) + '</span></span>' +
+        '</button>';
+    }).join('');
+
+    var html =
+      '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1></div>' +
+      '<div class="screen__body">' +
+      '<div class="card">' +
+      '<div class="summary-row"><span class="summary-row__label">목표</span><span class="summary-row__value">' + UI.escapeHtml(session.goalTitle || (goal ? goal.title : '')) + '</span></div>' +
+      '<div class="summary-row"><span class="summary-row__label">단계</span><span class="summary-row__value">' + UI.escapeHtml(session.stepTitle || '') + '</span></div>' +
+      '<div class="summary-row"><span class="summary-row__label">' + UI.escapeHtml(K.durationLabel) + '</span><span class="summary-row__value">' + UI.escapeHtml(Timer.formatDuration(durationMs)) + '</span></div>' +
+      '<div class="summary-row"><span class="summary-row__label">' + UI.escapeHtml(K.hiddenLabel) + '</span><span class="summary-row__value">' + ((session.hiddenCount || 0) > 0 ? UI.escapeHtml(K.hiddenYes) : UI.escapeHtml(K.hiddenNo)) + '</span></div>' +
+      '<div class="summary-row"><span class="summary-row__label">' + UI.escapeHtml(K.fallbackLabel) + '</span><span class="summary-row__value">' + (session.fallbackUsed ? UI.escapeHtml(K.fallbackYes) : UI.escapeHtml(K.fallbackNo)) + '</span></div>' +
+      '</div>' +
+      '<p class="text-strong" style="margin-top:24px;">' + UI.escapeHtml(K.question) + '</p>' +
+      '<div class="choice-card-list" id="result-choice-list" style="margin-top:12px;">' + optionsHtml + '</div>' +
+      '</div>' +
+      '<div class="screen__footer">' +
+      '<button type="button" class="btn btn-primary" id="record-submit-btn" disabled aria-disabled="true">' + UI.escapeHtml(K.submitButton) + '</button>' +
+      '</div>';
+
+    setScreen(html, { showNav: false });
+
+    var submitBtn = document.getElementById('record-submit-btn');
+    var cards = Array.prototype.slice.call(document.querySelectorAll('#result-choice-list .choice-card'));
+    cards.forEach(function (card) {
+      card.addEventListener('click', function () {
+        cards.forEach(function (c) { c.setAttribute('aria-pressed', 'false'); });
+        card.setAttribute('aria-pressed', 'true');
+        selectedProgressResult = card.getAttribute('data-value');
+        submitBtn.disabled = false;
+        submitBtn.removeAttribute('aria-disabled');
+      });
+    });
+
+    submitBtn.addEventListener('click', function () {
+      if (!selectedProgressResult) return;
+      var record = Timer.finalizeWithResult(selectedProgressResult);
       lastFinishedRecord = record;
+      UI.showToast(K.savedToast);
       Router.navigate('/result', { replace: true });
     });
   }
@@ -768,6 +991,7 @@
   function renderAlreadyDone(goalId) {
     var goal = getGoal(goalId);
     if (!goal) {
+      UI.showToast(Copy.goalDetail.unknownGoalToast);
       Router.navigate('/home', { replace: true });
       return;
     }
@@ -835,28 +1059,29 @@
       return goalCardHtml(goal, state);
     }).join('') || '<p class="empty-state">' + UI.escapeHtml(K.emptyInProgress) + '</p>';
 
-    var abandonedHtml = state.history.filter(function (r) { return r.status === 'abandoned'; }).slice(-5).reverse().map(function (r) {
-      return timelineItemHtml(getGoal(r.goalId), r, true);
-    }).join('') || '<p class="empty-state">' + UI.escapeHtml(K.emptyStopped) + '</p>';
+    var recentHtml = stats.recent.length
+      ? stats.recent.map(function (r) { return recordItemHtml(r); }).join('')
+      : '<p class="empty-state">' + UI.escapeHtml(K.emptyCompleted) + '</p>';
 
-    var recentHtml = stats.recentCompleted.map(function (r) {
-      return timelineItemHtml(getGoal(r.goalId), r, false);
-    }).join('') || '<p class="empty-state">' + UI.escapeHtml(K.emptyCompleted) + '</p>';
+    var avgLabel = stats.avgDurationMs != null ? Timer.formatDuration(stats.avgDurationMs) : '기록 없음';
 
     var html =
       appBarHtml() +
       '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1></div>' +
       '<div class="screen__body">' +
       '<div class="stat-row">' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.weeklyActiveDays + '</div><div class="stat-tile__label">' + UI.escapeHtml(Copy.home.statLabels.weeklyActiveDays) + '</div></div>' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.totalCompletedSteps + '</div><div class="stat-tile__label">' + UI.escapeHtml(Copy.home.statLabels.totalCompletedSteps) + '</div></div>' +
-      '<div class="stat-tile"><div class="stat-tile__value">' + stats.restartCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(Copy.home.statLabels.restartCount) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.weeklyActiveDays + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.weeklyActiveDays) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.completedCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.completedCount) + '</div></div>' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.partialCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.partialCount) + '</div></div>' +
+      '</div>' +
+      '<div class="stat-row" style="margin-top:12px;">' +
+      '<div class="stat-tile"><div class="stat-tile__value">' + stats.startedOnlyCount + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.startedCount) + '</div></div>' +
+      '<div class="stat-tile" style="grid-column: span 2;"><div class="stat-tile__value">' + avgLabel + '</div><div class="stat-tile__label">' + UI.escapeHtml(K.statLabels.avgDuration) + '</div></div>' +
       '</div>' +
       '<div class="section-title">' + UI.escapeHtml(K.recentDaysTitle) + '</div>' +
       '<div class="record-day-grid">' + days.join('') + '</div>' +
       '<div class="section-title">' + UI.escapeHtml(K.inProgressTitle) + '</div>' + inProgressHtml +
       '<div class="section-title">' + UI.escapeHtml(K.recentCompletedTitle) + '</div>' + recentHtml +
-      '<div class="section-title">' + UI.escapeHtml(K.stoppedTitle) + '</div>' + abandonedHtml +
       '<div class="section-title">' + UI.escapeHtml(K.resetTitle) + '</div>' +
       '<button type="button" class="btn btn-secondary" id="reset-records-btn">' + UI.escapeHtml(K.resetButton) + '</button>' +
       '</div>';
@@ -876,10 +1101,12 @@
             onSelect: function () {
               var onboarded = Storage.load().onboardingCompleted;
               var settings = Storage.load().settings;
+              var installCompleted = Storage.load().installCompleted;
               Storage.reset();
               Storage.update(function (state2) {
                 state2.onboardingCompleted = onboarded;
                 state2.settings = settings;
+                state2.installCompleted = installCompleted;
                 return state2;
               });
               UI.closeOverlay();
@@ -911,8 +1138,8 @@
       '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1></div>' +
       '<div class="screen__body">' +
       '<div class="settings-row"><span class="settings-row__icon"><span class="icon icon--sm">' + Icons.ui('bell') + '</span></span>' +
-      '<span class="settings-row__label">' + UI.escapeHtml(K.notificationRow) + '</span>' +
-      '<span class="settings-row__value">' + notificationStatusLabel(state) + '</span></div>' +
+      '<span class="settings-row__label">' + UI.escapeHtml(K.notificationRow) + '<br><span class="text-caption">' + notificationStatusLabel(state) + '</span></span>' +
+      '<button type="button" class="settings-row__action" id="notification-change-btn">' + UI.escapeHtml(K.notificationChange) + '</button></div>' +
       toggleRow('toggle-sound', 'volume', K.soundToggle, s.soundEnabled) +
       toggleRow('toggle-vibration', 'vibrate', K.vibrationToggle, s.vibrationEnabled) +
       toggleRow('toggle-wakelock', 'info', K.wakeLockToggle, s.wakeLockEnabled) +
@@ -960,26 +1187,31 @@
       Storage.update(function (st) { st.onboardingCompleted = false; return st; });
       Router.navigate('/onboarding', { replace: true });
     });
+
+    document.getElementById('notification-change-btn').addEventListener('click', function () {
+      openNotificationSheet(true);
+    });
   }
 
   /* ---------------- PWA 설치 안내 ---------------- */
 
   function renderInstall() {
-    var installed = PWA.isStandalone();
+    var installed = PWA.isStandalone() || Storage.load().installCompleted;
     var canPrompt = PWA.canPromptInstall();
     var K = Copy.install;
+    var isAndroid = /Android/i.test(navigator.userAgent);
 
     var html =
-      appBarHtml({ back: '#/settings', title: K.title }) +
-      '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.title) + '</h1></div>' +
+      appBarHtml({ back: '#/settings', title: K.cardTitle }) +
+      '<div class="screen__header"><h1 tabindex="-1">' + UI.escapeHtml(K.cardTitle) + '</h1></div>' +
       '<div class="screen__body">' +
-      '<p class="text-body">' + UI.escapeHtml(K.body) + '</p>' +
+      '<p class="text-body">' + UI.escapeHtml(K.cardBody) + '</p>' +
       (installed
         ? '<p class="text-strong" style="margin-top:16px;">' + UI.escapeHtml(K.alreadyInstalled) + '</p>'
         : (canPrompt
           ? '<button type="button" class="btn btn-primary" id="install-btn" style="margin-top:16px;">' + UI.escapeHtml(K.installButton) + '</button>'
           : '<div class="card" style="margin-top:16px;"><div class="card__title">' + UI.escapeHtml(K.manualTitle) + '</div>' +
-            '<p class="text-body" style="margin-top:8px;white-space:pre-line;">' + UI.escapeHtml(K.manualSteps) + '</p></div>')) +
+            '<p class="text-body" style="margin-top:8px;white-space:pre-line;">' + UI.escapeHtml(isAndroid ? K.manualAndroid : K.manualGeneric) + '</p></div>')) +
       '</div>';
 
     setScreen(html, { showNav: false });
@@ -1027,24 +1259,26 @@
     var session = state.activeSession;
     if (session) {
       if (session.status === C.SESSION_STATUS.RUNNING && Timer.isExpired(session)) {
-        Timer.markFinishPending();
+        Timer.markFinishPending(C.FINISH_TYPE.RECOVERED_AFTER_END, { skipFinishScreen: false });
         Notifications.playEndSound();
         Notifications.vibrate([200, 100, 200, 100, 400]);
         Notifications.showTimerEndNotification();
         WakeLock.disable();
-        if (route.name !== 'finish') {
-          Router.navigate('/finish', { replace: true });
+        session = Storage.load().activeSession;
+      }
+
+      if (session && session.status === C.SESSION_STATUS.FINISH_PENDING) {
+        var target = session.skipFinishScreen ? 'record-result' : 'finish';
+        if (route.name !== target) {
+          Router.navigate('/' + target, { replace: true });
           return;
         }
-      } else if (session.status === C.SESSION_STATUS.FINISH_PENDING && route.name !== 'finish') {
-        Router.navigate('/finish', { replace: true });
-        return;
-      } else if (session.status === C.SESSION_STATUS.RUNNING && route.name !== 'timer') {
+      } else if (session && session.status === C.SESSION_STATUS.RUNNING && route.name !== 'timer') {
         Router.navigate('/timer', { replace: true });
-        global.setTimeout(openMidStopDialog, 30);
+        global.setTimeout(openMidStopSheet, 30);
         return;
       }
-    } else if (route.name === 'timer' || route.name === 'finish') {
+    } else if (route.name === 'timer' || route.name === 'finish' || route.name === 'record-result') {
       Router.navigate('/home', { replace: true });
       return;
     }
@@ -1056,6 +1290,7 @@
       case 'goal': renderGoalDetail(route.params[0]); break;
       case 'timer': renderTimer(); break;
       case 'finish': renderFinish(); break;
+      case 'record-result': renderRecordResult(); break;
       case 'result': renderResult(); break;
       case 'already-done': renderAlreadyDone(route.params[0]); break;
       case 'records': renderRecords(); break;
@@ -1086,13 +1321,18 @@
         UI.showToast(Copy.timer.returnedToast);
       }
       var current = Router.current();
-      if (current.name === 'timer') {
-        renderTimer();
-      } else {
-        render(current);
-      }
+      render(current);
     }
   });
+
+  /* 알림 클릭으로 복귀했을 때 Service Worker가 보내는 메시지에도 반응한다 */
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function (event) {
+      if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+        render(Router.current());
+      }
+    });
+  }
 
   /* ---------------- 하단 내비게이션 ---------------- */
 

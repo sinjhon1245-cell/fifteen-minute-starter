@@ -1,4 +1,4 @@
-/* 15분 시동 - 알림 / 소리 / 진동 (서버 없이 브라우저 기능만 사용) */
+/* 15분만 - 알림 / 소리 / 진동 (서버 없이 브라우저 기능만 사용) */
 (function (global) {
   'use strict';
 
@@ -125,8 +125,8 @@
 
     showTimerEndNotification: function () {
       return showViaServiceWorkerOrDirect(
-        '15분이 끝났습니다.',
-        '오늘은 여기서 멈춥니다. 하던 일을 정리해 주세요.',
+        '15분만 · 15분이 끝났습니다',
+        '지금 하던 일을 마무리하고 실행 결과를 기록하세요.',
         'fms-timer-end'
       );
     },

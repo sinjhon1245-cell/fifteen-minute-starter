@@ -12,8 +12,8 @@
       errors.push('분야 수가 8개가 아닙니다: ' + categories.length);
     }
 
-    if (goals.length < 24) {
-      errors.push('목표 수가 24개 미만입니다: ' + goals.length);
+    if (goals.length < 16) {
+      errors.push('목표 수가 16개 미만입니다: ' + goals.length);
     }
 
     var totalSteps = 0;
@@ -35,11 +35,11 @@
         errors.push('목표 ' + g.id + '의 categoryId(' + g.categoryId + ')가 유효한 분야가 아닙니다.');
       }
 
-      if (!g.steps || g.steps.length < 7) {
-        errors.push('목표 ' + g.id + '의 단계 수가 7개 미만입니다: ' + (g.steps ? g.steps.length : 0));
+      if (!g.steps || g.steps.length < 4) {
+        errors.push('목표 ' + g.id + '의 단계 수가 4개 미만입니다: ' + (g.steps ? g.steps.length : 0));
       }
-      if (g.steps && g.steps.length > 10) {
-        warnings.push('목표 ' + g.id + '의 단계 수가 10개를 초과합니다: ' + g.steps.length);
+      if (g.steps && g.steps.length > 6) {
+        warnings.push('목표 ' + g.id + '의 단계 수가 6개를 초과합니다: ' + g.steps.length);
       }
 
       (g.steps || []).forEach(function (s) {
@@ -61,8 +61,11 @@
       });
     });
 
-    if (totalSteps < 168) {
-      errors.push('전체 단계 수가 168개 미만입니다: ' + totalSteps);
+    if (totalSteps < 70) {
+      errors.push('전체 단계 수가 70개 미만입니다: ' + totalSteps);
+    }
+    if (totalSteps > 90) {
+      warnings.push('전체 단계 수가 90개를 초과합니다: ' + totalSteps);
     }
 
     return {

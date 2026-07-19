@@ -1,4 +1,4 @@
-/* 15분 시동 - 공통 UI 유틸 (렌더 헬퍼, 다이얼로그/시트/토스트/롱프레스) */
+/* 15분만 - 공통 UI 유틸 (렌더 헬퍼, 다이얼로그/시트/토스트/롱프레스) */
 (function (global) {
   'use strict';
 
@@ -146,6 +146,94 @@
     return closeOverlay;
   }
 
+  function showActionSheet(opts) {
+    closeOverlay();
+    var overlay = document.createElement('div');
+    overlay.className = 'sheet-overlay';
+
+    var sheet = document.createElement('div');
+    sheet.className = 'sheet';
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-modal', 'true');
+    sheet.setAttribute('aria-labelledby', 'action-sheet-title');
+
+    var titleEl = document.createElement('div');
+    titleEl.className = 'sheet__title';
+    titleEl.id = 'action-sheet-title';
+    titleEl.textContent = opts.title;
+    sheet.appendChild(titleEl);
+
+    if (opts.body) {
+      var bodyEl = document.createElement('div');
+      bodyEl.className = 'sheet__body';
+      bodyEl.textContent = opts.body;
+      sheet.appendChild(bodyEl);
+    }
+
+    if (opts.chip) {
+      var chipEl = document.createElement('div');
+      chipEl.className = 'status-chip';
+      chipEl.style.marginTop = '12px';
+      chipEl.textContent = opts.chip;
+      sheet.appendChild(chipEl);
+    }
+
+    var list = document.createElement('div');
+    list.className = 'action-card-list';
+    (opts.actions || []).forEach(function (action) {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'action-card' + (action.variant ? ' action-card--' + action.variant : '');
+      if (action.disabled) {
+        card.disabled = true;
+        card.setAttribute('aria-disabled', 'true');
+      }
+
+      var iconWrap = document.createElement('span');
+      iconWrap.className = 'action-card__icon';
+      iconWrap.innerHTML = '<span class="icon">' + (action.icon || '') + '</span>';
+      card.appendChild(iconWrap);
+
+      var textWrap = document.createElement('span');
+      textWrap.className = 'action-card__text';
+
+      var titleRow = document.createElement('span');
+      titleRow.className = 'action-card__title';
+      titleRow.textContent = action.title;
+      textWrap.appendChild(titleRow);
+
+      var bodyRow = document.createElement('span');
+      bodyRow.className = 'action-card__body';
+      bodyRow.textContent = action.body;
+      textWrap.appendChild(bodyRow);
+
+      if (action.note) {
+        var noteRow = document.createElement('span');
+        noteRow.className = 'action-card__note';
+        noteRow.textContent = action.note;
+        textWrap.appendChild(noteRow);
+      }
+
+      card.appendChild(textWrap);
+
+      if (!action.disabled) {
+        card.addEventListener('click', function () {
+          if (action.onSelect) action.onSelect();
+        });
+      }
+
+      list.appendChild(card);
+    });
+    sheet.appendChild(list);
+
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+
+    activeOverlayRelease = global.FMS.A11y.trapFocus(sheet);
+
+    return closeOverlay;
+  }
+
   function attachLongPress(button, opts) {
     var holdMs = opts.holdMs || 3000;
     var fillEl = button.querySelector('.longpress-fill');
@@ -197,6 +285,7 @@
     showToast: showToast,
     showDialog: showDialog,
     showSheet: showSheet,
+    showActionSheet: showActionSheet,
     closeOverlay: closeOverlay,
     attachLongPress: attachLongPress
   };

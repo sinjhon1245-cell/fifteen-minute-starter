@@ -1,4 +1,4 @@
-/* 15분 시동 - PWA 설치 및 Service Worker 등록 (GitHub Pages 하위 경로 대응 상대 경로 사용) */
+/* 15분만 - PWA 설치 및 Service Worker 등록 (GitHub Pages 하위 경로 대응 상대 경로 사용) */
 (function (global) {
   'use strict';
 
@@ -36,6 +36,12 @@
 
   global.addEventListener('appinstalled', function () {
     deferredPrompt = null;
+    if (global.FMS && global.FMS.Storage) {
+      global.FMS.Storage.update(function (state) {
+        state.installCompleted = true;
+        return state;
+      });
+    }
     installListeners.forEach(function (fn) { fn(false); });
   });
 
@@ -55,6 +61,12 @@
       deferredPrompt = null;
       prompt.prompt();
       return prompt.userChoice.then(function (choice) {
+        if (choice.outcome === 'accepted' && global.FMS && global.FMS.Storage) {
+          global.FMS.Storage.update(function (state) {
+            state.installCompleted = true;
+            return state;
+          });
+        }
         return choice.outcome;
       });
     },

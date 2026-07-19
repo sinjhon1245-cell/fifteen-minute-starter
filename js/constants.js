@@ -1,4 +1,4 @@
-/* 15분 시동 - 전역 상수 */
+/* 15분만 - 전역 상수 */
 (function (global) {
   'use strict';
 
@@ -28,11 +28,12 @@
   }
 
   var Constants = {
-    APP_NAME: '15분 시동',
-    APP_VERSION: '1.0.0',
-    CACHE_VERSION: 'fms-v1',
+    APP_NAME: '15분만',
+    APP_TAGLINE: '하나만 고르고, 15분만.',
+    APP_SUBTAGLINE: '끝나면 멈추고, 다음에 이어갑니다.',
+    APP_VERSION: '2.0.0',
     STORAGE_KEY: 'fms_state_v1',
-    SCHEMA_VERSION: 1,
+    SCHEMA_VERSION: 2,
     TIMER_DURATION_MS: resolveTimerDuration(),
     HIDDEN_NOTIFY_MAX_COUNT: 3,
     HIDDEN_NOTIFY_MIN_INTERVAL_MS: 60 * 1000,
@@ -49,6 +50,18 @@
       UNSET: 'unset',
       GRANTED: 'granted',
       SCREEN_ONLY: 'screen_only'
+    },
+    FINISH_TYPE: {
+      TIMER_COMPLETE: 'timer_complete',
+      EARLY_COMPLETE: 'early_complete',
+      MANUAL_END: 'manual_end',
+      RECOVERED_AFTER_END: 'recovered_after_end'
+    },
+    PROGRESS_RESULT: {
+      COMPLETED: 'completed',
+      SUFFICIENT: 'sufficient',
+      PARTIAL: 'partial',
+      STARTED_ONLY: 'started_only'
     }
   };
 

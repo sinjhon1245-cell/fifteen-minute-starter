@@ -1,6 +1,6 @@
-/* 15분 시동 - Service Worker (오프라인 캐싱, GitHub Pages 하위 경로 대응 상대 경로) */
+/* 15분만 - Service Worker (오프라인 캐싱, GitHub Pages 하위 경로 대응 상대 경로) */
 /* 캐시 버전 갱신 규칙: 배포할 코드가 바뀌면 CACHE_NAME의 버전 숫자를 반드시 올린다. */
-var CACHE_NAME = 'fms-cache-v2';
+var CACHE_NAME = 'fms-cache-v3';
 
 var PRECACHE_URLS = [
   './',

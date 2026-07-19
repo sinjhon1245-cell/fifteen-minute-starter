@@ -1,4 +1,4 @@
-/* 15분 시동 - 로컬 저장소 관리 (localStorage 래핑, 스키마 버전 관리) */
+/* 15분만 - 로컬 저장소 관리 (localStorage 래핑, 스키마 버전 관리) */
 (function (global) {
   'use strict';
 
@@ -8,6 +8,7 @@
     return {
       version: C.SCHEMA_VERSION,
       onboardingCompleted: false,
+      installCompleted: false,
       settings: {
         notificationPreference: C.NOTIFICATION_PREFERENCE.UNSET,
         soundEnabled: true,
@@ -32,6 +33,52 @@
     }
   }
 
+  function migrateHistoryRecord(r) {
+    if (!r || typeof r !== 'object') return null;
+    var out = Object.assign({}, r);
+
+    if (typeof out.actualDurationMs !== 'number') {
+      if (out.startTime && out.actualEndTime) {
+        out.actualDurationMs = Math.max(0, out.actualEndTime - out.startTime);
+      } else if (out.finished) {
+        out.actualDurationMs = C.TIMER_DURATION_MS;
+      } else {
+        out.actualDurationMs = null;
+      }
+    }
+    if (typeof out.actualDurationSeconds !== 'number') {
+      out.actualDurationSeconds = typeof out.actualDurationMs === 'number' ? Math.round(out.actualDurationMs / 1000) : null;
+    }
+    if (!out.finishType) {
+      out.finishType = out.finished ? C.FINISH_TYPE.TIMER_COMPLETE : C.FINISH_TYPE.MANUAL_END;
+    }
+    if (!out.progressResult) {
+      out.progressResult = out.finished ? C.PROGRESS_RESULT.COMPLETED : null;
+    }
+    if (typeof out.fallbackUsed !== 'boolean') {
+      out.fallbackUsed = !!out.reducedAction;
+    }
+    if (typeof out.fallbackUsedAt === 'undefined') {
+      out.fallbackUsedAt = null;
+    }
+    if (typeof out.overrideRun !== 'boolean') {
+      out.overrideRun = !!out.forcedRerun;
+    }
+    if (typeof out.completedAt === 'undefined') {
+      out.completedAt = out.actualEndTime || null;
+    }
+    if (!out.dateKey) {
+      out.dateKey = out.date || null;
+    }
+    if (!out.goalTitle) {
+      out.goalTitle = null;
+    }
+    if (!out.stepTitle) {
+      out.stepTitle = null;
+    }
+    return out;
+  }
+
   function migrate(state) {
     if (!state || typeof state !== 'object') {
       return defaultState();
@@ -39,9 +86,12 @@
     if (state.version !== C.SCHEMA_VERSION) {
       var fresh = defaultState();
       state.onboardingCompleted = !!state.onboardingCompleted;
+      state.installCompleted = !!state.installCompleted;
       state.settings = Object.assign({}, fresh.settings, state.settings || {});
       state.goalProgress = state.goalProgress && typeof state.goalProgress === 'object' ? state.goalProgress : {};
-      state.history = Array.isArray(state.history) ? state.history : [];
+      state.history = (Array.isArray(state.history) ? state.history : [])
+        .map(migrateHistoryRecord)
+        .filter(Boolean);
       state.activeSession = state.activeSession || null;
       state.version = C.SCHEMA_VERSION;
     }
@@ -56,6 +106,7 @@
     return {
       version: C.SCHEMA_VERSION,
       onboardingCompleted: !!state.onboardingCompleted,
+      installCompleted: !!state.installCompleted,
       settings: Object.assign({}, fresh.settings, state.settings && typeof state.settings === 'object' ? state.settings : {}),
       goalProgress: state.goalProgress && typeof state.goalProgress === 'object' ? state.goalProgress : {},
       history: Array.isArray(state.history) ? state.history : [],

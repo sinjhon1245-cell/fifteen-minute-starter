@@ -611,6 +611,261 @@ textarea:focus-visible {
   z-index: 1;
 }
 
+/* Action card list (중도 종료 등 결과가 다른 선택지 목록) */
+.action-card-list {
+  margin-top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 64px;
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.action-card--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.action-card--primary .action-card__title,
+.action-card--primary .action-card__body,
+.action-card--primary .action-card__icon {
+  color: var(--color-accent-text);
+}
+
+.action-card--danger {
+  margin-top: var(--space-2);
+  border-color: var(--color-danger);
+}
+
+.action-card--danger .action-card__icon {
+  color: var(--color-danger);
+}
+
+.action-card:disabled,
+.action-card[aria-disabled="true"] {
+  opacity: 1;
+  background: var(--color-surface-sunken);
+  border-style: dashed;
+}
+
+.action-card:disabled .action-card__title,
+.action-card[aria-disabled="true"] .action-card__title {
+  color: var(--color-text-muted);
+}
+
+.action-card:disabled .action-card__icon,
+.action-card[aria-disabled="true"] .action-card__icon {
+  color: var(--color-text-faint);
+}
+
+.action-card__icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.action-card__icon .icon,
+.action-card__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.action-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.action-card__title {
+  font-size: 17px;
+  font-weight: 700;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.action-card__body {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.action-card__note {
+  font-size: 12px;
+  color: var(--color-text-faint);
+  word-break: keep-all;
+}
+
+/* Choice card list (결과 기록 화면의 4지선다) */
+.choice-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 64px;
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+}
+
+.choice-card[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.choice-card__check {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--color-border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  margin-top: 2px;
+}
+
+.choice-card[aria-pressed="true"] .choice-card__check {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.choice-card__check .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.choice-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.choice-card__title {
+  font-size: 16px;
+  font-weight: 700;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.choice-card__body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+/* Summary rows (결과 기록 상단 요약) */
+.summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 14px;
+}
+
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.summary-row__label {
+  color: var(--color-text-muted);
+}
+
+.summary-row__value {
+  font-weight: 700;
+}
+
+/* Install card (home) */
+.install-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.install-card__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.install-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-card__title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.install-card__desc {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.install-card__action {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Settings row inline action button */
+.settings-row__action {
+  min-height: 36px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  flex-shrink: 0;
+}
+
 /* Toast / live region */
 .toast {
   position: fixed;

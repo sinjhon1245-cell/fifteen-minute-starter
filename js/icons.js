@@ -1,4 +1,4 @@
-/* 15분 시동 - Inline SVG 아이콘 모음 (외부 아이콘 CDN 미사용) */
+/* 15분만 - Inline SVG 아이콘 모음 (외부 아이콘 CDN 미사용) */
 (function (global) {
   'use strict';
 
@@ -35,7 +35,13 @@
     check: svg('<path d="M4.5 12.5 9.5 17.5 19.5 6.5"/>'),
     chevronRight: svg('<path d="M9 5.5 15.5 12 9 18.5"/>'),
     back: svg('<path d="M15 5.5 8.5 12l6.5 6.5"/>'),
-    close: svg('<path d="M5.5 5.5 18.5 18.5M18.5 5.5 5.5 18.5"/>')
+    close: svg('<path d="M5.5 5.5 18.5 18.5M18.5 5.5 5.5 18.5"/>'),
+    play: svg('<path d="M7 5.5v13l11-6.5-11-6.5Z"/>'),
+    shrink: svg('<path d="M8 4v5H3M16 4v5h5M8 20v-5H3M16 20v-5h5"/>'),
+    flag: svg('<path d="M6 3v18"/><path d="M6 4.5h11l-2.5 3.5L17 11.5H6"/>'),
+    stopCircle: svg('<circle cx="12" cy="12" r="8.5"/><rect x="9" y="9" width="6" height="6" rx="1"/>'),
+    lock: svg('<rect x="5" y="10.5" width="14" height="9" rx="1.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
+    install: svg('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v6"/><path d="M9.5 11.5 12 14l2.5-2.5"/>')
   };
 
   global.FMS = global.FMS || {};
