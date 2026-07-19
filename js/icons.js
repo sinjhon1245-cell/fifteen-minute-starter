@@ -41,7 +41,14 @@
     flag: svg('<path d="M6 3v18"/><path d="M6 4.5h11l-2.5 3.5L17 11.5H6"/>'),
     stopCircle: svg('<circle cx="12" cy="12" r="8.5"/><rect x="9" y="9" width="6" height="6" rx="1"/>'),
     lock: svg('<rect x="5" y="10.5" width="14" height="9" rx="1.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
-    install: svg('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v6"/><path d="M9.5 11.5 12 14l2.5-2.5"/>')
+    install: svg('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v6"/><path d="M9.5 11.5 12 14l2.5-2.5"/>'),
+    more: svg('<circle cx="12" cy="5.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="18.5" r="1.6"/>'),
+    edit: svg('<path d="M4 20h4L18.5 9.5a2 2 0 0 0-4-4L4 16v4Z"/><path d="M13.5 6.5l4 4"/>'),
+    trash: svg('<path d="M5 7h14"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"/><path d="M7 7l1 12.5A1.5 1.5 0 0 0 9.5 21h5a1.5 1.5 0 0 0 1.5-1.5L17 7"/><path d="M10 11v6M14 11v6"/>'),
+    arrowUp: svg('<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>'),
+    arrowDown: svg('<path d="M12 5v14"/><path d="M18 13l-6 6-6-6"/>'),
+    copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5.5A1.5 1.5 0 0 1 6.5 4H15"/>'),
+    eyeOff: svg('<path d="M3 3l18 18"/><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c5 0 9 3.5 10 7-.4 1.3-1.2 2.6-2.2 3.7M6.5 6.5C4.6 7.8 3.1 9.7 2 12c1 3.5 5 7 10 7 1.2 0 2.4-.2 3.5-.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>')
   };
 
   global.FMS = global.FMS || {};

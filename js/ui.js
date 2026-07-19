@@ -124,6 +124,10 @@
       sheet.appendChild(bodyEl);
     }
 
+    if (opts.extra) {
+      sheet.appendChild(opts.extra);
+    }
+
     var actions = document.createElement('div');
     actions.className = 'sheet__actions';
     (opts.actions || []).forEach(function (action) {
@@ -131,6 +135,7 @@
       btn.type = 'button';
       btn.className = action.className || 'btn btn-secondary';
       btn.textContent = action.label;
+      btn.disabled = !!action.disabled;
       btn.addEventListener('click', function () {
         if (action.onSelect) action.onSelect();
       });
@@ -142,6 +147,12 @@
     document.body.appendChild(overlay);
 
     activeOverlayRelease = global.FMS.A11y.trapFocus(sheet);
+
+    overlay.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && opts.allowEscape !== false) {
+        closeOverlay();
+      }
+    });
 
     return closeOverlay;
   }
@@ -230,6 +241,12 @@
     document.body.appendChild(overlay);
 
     activeOverlayRelease = global.FMS.A11y.trapFocus(sheet);
+
+    overlay.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && opts.allowEscape !== false) {
+        closeOverlay();
+      }
+    });
 
     return closeOverlay;
   }

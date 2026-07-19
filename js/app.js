@@ -40,11 +40,18 @@
   }
 
   function getGoalsByCategory(categoryId) {
-    return GOALS.filter(function (g) { return g.categoryId === categoryId; });
+    var state = Storage.load();
+    var hiddenIds = state.hiddenRecommendedGoalIds || [];
+    var recommended = GOALS.filter(function (g) { return g.categoryId === categoryId && hiddenIds.indexOf(g.id) === -1; });
+    var custom = (state.customGoals || []).filter(function (g) { return g.categoryId === categoryId; });
+    return recommended.concat(custom);
   }
 
   function getGoal(id) {
-    return GOALS.find(function (g) { return g.id === id; }) || null;
+    var found = GOALS.find(function (g) { return g.id === id; });
+    if (found) return found;
+    var state = Storage.load();
+    return (state.customGoals || []).find(function (g) { return g.id === id; }) || null;
   }
 
   function getStep(goal, stepNumber) {
@@ -54,6 +61,221 @@
 
   function catVar(categoryId, kind) {
     return 'var(--cat-' + categoryId + (kind === 'soft' ? '-soft' : '') + ')';
+  }
+
+  /* ---------------- 내가 추가한 행동 (커스텀 목표) ---------------- */
+
+  var CUSTOM_TITLE_MAX = 30;
+  var CUSTOM_DESC_MAX = 200;
+  var CUSTOM_MIN_STEPS = 1;
+  var CUSTOM_MAX_STEPS = 6;
+  var CUSTOM_STEP_COUNT_DEFAULT = 5;
+
+  function isCustomGoal(goal) {
+    return !!goal && goal.source === 'custom';
+  }
+
+  function genId(prefix) {
+    return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function categoryGoalBucket(goal, state) {
+    var meta = goalCardMeta(goal, state);
+    if (meta.completedAll) return 3;
+    if (meta.started) return 0;
+    if (isCustomGoal(goal)) return 1;
+    return 2;
+  }
+
+  function isDuplicateCustomTitle(categoryId, title, excludeGoalId) {
+    var state = Storage.load();
+    var norm = title.trim().toLowerCase();
+    var dupInCustom = (state.customGoals || []).some(function (g) {
+      return g.categoryId === categoryId && g.id !== excludeGoalId && g.title.trim().toLowerCase() === norm;
+    });
+    if (dupInCustom) return true;
+    var hiddenIds = state.hiddenRecommendedGoalIds || [];
+    return GOALS.some(function (g) {
+      return g.categoryId === categoryId && hiddenIds.indexOf(g.id) === -1 && g.title.trim().toLowerCase() === norm;
+    });
+  }
+
+  function buildDefaultStep(goalId, stepNumber, totalSteps, title, description) {
+    var isFirst = stepNumber === 1;
+    var isLast = stepNumber === totalSteps;
+    var stepTitle = isFirst
+      ? (totalSteps === 1 ? (title + ' 실행하기') : (title + ' 시작하기'))
+      : (isLast ? (title + ' 마무리하기') : (title + ' 이어가기'));
+    var action = isFirst
+      ? ((description && description.trim()) ? description.trim() : ('정한 행동인 \'' + title + '\'을(를) 15분 동안 시작하세요.'))
+      : ('이어서 \'' + title + '\'을(를) 15분 동안 진행하세요.');
+    return {
+      id: goalId + '-s' + stepNumber,
+      stepNumber: stepNumber,
+      title: stepTitle,
+      action: action,
+      preparation: isFirst
+        ? '준비물이나 장소를 미리 정리해 두면 15분을 바로 시작할 수 있습니다.'
+        : '지난번까지 진행한 부분을 확인하고 이어갈 준비를 하세요.',
+      focusMessage: '지금 하는 행동에 집중하세요.',
+      fallbackAction: '시간이 부족하면 더 작은 범위로 줄여서 진행하세요.',
+      finishAction: isLast
+        ? '오늘까지 진행한 내용을 확인하고 기록하세요.'
+        : '오늘 진행한 부분을 간단히 기록해 두세요.',
+      nextPreview: isLast ? '모든 단계를 마쳤습니다.' : '다음에는 이어서 진행합니다.'
+    };
+  }
+
+  function buildDefaultSteps(goalId, title, description, stepCount) {
+    var steps = [];
+    for (var i = 1; i <= stepCount; i++) {
+      steps.push(buildDefaultStep(goalId, i, stepCount, title, i === 1 ? description : ''));
+    }
+    return steps;
+  }
+
+  function createCustomGoal(categoryId, title, description, stepCount) {
+    var id = genId('custom');
+    var now = Date.now();
+    var goal = {
+      id: id,
+      categoryId: categoryId,
+      source: 'custom',
+      title: title,
+      description: description || '',
+      startMessage: (global.FMS_CATEGORY_START_MESSAGE && global.FMS_CATEGORY_START_MESSAGE[categoryId]) || '지금 할 수 있는 만큼 시작하세요.',
+      steps: buildDefaultSteps(id, title, description, stepCount),
+      createdAt: now,
+      updatedAt: now
+    };
+    Storage.update(function (state) {
+      state.customGoals = state.customGoals || [];
+      state.customGoals.push(goal);
+      return state;
+    });
+    return goal;
+  }
+
+  function updateCustomGoal(goalId, changes) {
+    Storage.update(function (state) {
+      var list = state.customGoals || [];
+      var goal = null;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === goalId) { goal = list[i]; break; }
+      }
+      if (!goal) return state;
+
+      var newStepCount = changes.stepCount || goal.steps.length;
+      goal.title = changes.title;
+      goal.description = changes.description || '';
+      goal.steps = buildDefaultSteps(goal.id, changes.title, changes.description, newStepCount);
+      goal.updatedAt = Date.now();
+
+      var progress = state.goalProgress[goalId];
+      if (progress) {
+        progress.currentStepNumber = Math.min(progress.currentStepNumber, newStepCount + 1);
+        progress.completedStepNumbers = (progress.completedStepNumbers || []).filter(function (n) { return n <= newStepCount; });
+        state.goalProgress[goalId] = progress;
+      }
+      return state;
+    });
+  }
+
+  function deleteCustomGoal(goalId) {
+    Storage.update(function (state) {
+      state.customGoals = (state.customGoals || []).filter(function (g) { return g.id !== goalId; });
+      if (state.goalProgress && state.goalProgress[goalId]) {
+        delete state.goalProgress[goalId];
+      }
+      return state;
+    });
+  }
+
+  function moveCustomGoal(goalId, direction) {
+    Storage.update(function (state) {
+      var list = state.customGoals || [];
+      var goal = null;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === goalId) { goal = list[i]; break; }
+      }
+      if (!goal) return state;
+      var sameCategory = list.filter(function (g) { return g.categoryId === goal.categoryId; });
+      var idx = sameCategory.indexOf(goal);
+      var swapWith = direction === 'up' ? sameCategory[idx - 1] : sameCategory[idx + 1];
+      if (!swapWith) return state;
+      var realIdxA = list.indexOf(goal);
+      var realIdxB = list.indexOf(swapWith);
+      list[realIdxA] = swapWith;
+      list[realIdxB] = goal;
+      state.customGoals = list;
+      return state;
+    });
+  }
+
+  function copyRecommendedToCustom(goalId) {
+    var original = GOALS.find(function (g) { return g.id === goalId; });
+    if (!original) return null;
+    var newId = genId('custom');
+    var now = Date.now();
+    var clonedSteps = original.steps.map(function (s) {
+      return {
+        id: newId + '-s' + s.stepNumber,
+        stepNumber: s.stepNumber,
+        title: s.title,
+        action: s.action,
+        preparation: s.preparation,
+        focusMessage: s.focusMessage,
+        fallbackAction: s.fallbackAction,
+        finishAction: s.finishAction,
+        nextPreview: s.nextPreview
+      };
+    });
+    var goal = {
+      id: newId,
+      categoryId: original.categoryId,
+      source: 'custom',
+      title: original.title,
+      description: original.description || '',
+      startMessage: original.startMessage,
+      steps: clonedSteps,
+      createdAt: now,
+      updatedAt: now,
+      copiedFrom: original.id
+    };
+    Storage.update(function (state) {
+      state.customGoals = state.customGoals || [];
+      state.customGoals.push(goal);
+      return state;
+    });
+    return goal;
+  }
+
+  function hideRecommendedGoal(goalId) {
+    Storage.update(function (state) {
+      state.hiddenRecommendedGoalIds = state.hiddenRecommendedGoalIds || [];
+      if (state.hiddenRecommendedGoalIds.indexOf(goalId) === -1) {
+        state.hiddenRecommendedGoalIds.push(goalId);
+      }
+      return state;
+    });
+  }
+
+  function restoreRecommendedGoal(goalId) {
+    Storage.update(function (state) {
+      state.hiddenRecommendedGoalIds = (state.hiddenRecommendedGoalIds || []).filter(function (id) { return id !== goalId; });
+      return state;
+    });
+  }
+
+  function resetHiddenForCategory(categoryId) {
+    Storage.update(function (state) {
+      var hiddenIds = state.hiddenRecommendedGoalIds || [];
+      state.hiddenRecommendedGoalIds = hiddenIds.filter(function (id) {
+        var g = GOALS.find(function (gg) { return gg.id === id; });
+        return g ? g.categoryId !== categoryId : true;
+      });
+      return state;
+    });
   }
 
   /* ---------------- 통계 헬퍼 ---------------- */
@@ -371,6 +593,34 @@
 
   /* ---------------- 분야별 목표 목록 ---------------- */
 
+  function categoryGoalCardHtml(goal, state) {
+    var meta = goalCardMeta(goal, state);
+    var nextStep = getStep(goal, meta.current);
+    var pct = Math.round((meta.progress.completedStepNumbers ? meta.progress.completedStepNumbers.length : 0) / meta.total * 100);
+    var K = Copy.customGoal;
+    var isCustom = isCustomGoal(goal);
+    var badge = isCustom
+      ? '<span class="card__badge card__badge--custom">' + UI.escapeHtml(K.badgeCustom) + '</span>'
+      : '<span class="card__badge card__badge--recommended">' + UI.escapeHtml(K.badgeRecommended) + '</span>';
+
+    return '<div class="goal-card-row">' +
+      '<a class="goal-card" href="#/goal/' + goal.id + '">' +
+      '<span class="goal-card__icon" style="background:' + catVar(goal.categoryId, 'soft') + ';color:' + catVar(goal.categoryId) + ';">' +
+      '<span class="icon">' + Icons.category(goal.categoryId) + '</span></span>' +
+      '<span class="goal-card__body">' +
+      '<span class="goal-card__title-row"><span class="card__title">' + UI.escapeHtml(goal.title) + '</span></span>' +
+      (goal.description ? '<span class="goal-card__desc text-caption">' + UI.escapeHtml(goal.description) + '</span>' : '') +
+      '<span class="goal-card__badge-row">' + badge + statusBadgeHtml(meta) + '</span>' +
+      '<span class="goal-card__progress-row"><span class="progress-track"><span class="progress-fill" style="width:' + Math.max(4, pct) + '%;background:' + catVar(goal.categoryId) + ';"></span></span>' +
+      '<span class="text-caption">' + meta.current + '/' + meta.total + '</span></span>' +
+      '<span class="goal-card__next">' + (meta.completedAll ? UI.escapeHtml(Copy.category.allStepsDone) : UI.escapeHtml(nextStep ? nextStep.title : '')) + '</span>' +
+      '</span>' +
+      '</a>' +
+      '<button type="button" class="goal-card-row__menu" aria-label="' + UI.escapeHtml(goal.title) + ' ' + UI.escapeHtml(K.menuButtonLabelSuffix) + '" data-goal-menu="' + goal.id + '">' +
+      '<span class="icon">' + Icons.ui('more') + '</span></button>' +
+      '</div>';
+  }
+
   function renderCategory(categoryId) {
     var category = getCategory(categoryId);
     if (!category) {
@@ -379,11 +629,21 @@
       return;
     }
     var state = Storage.load();
+    var K = Copy.customGoal;
     var goals = getGoalsByCategory(categoryId);
 
-    var cardsHtml = goals.map(function (goal) {
-      return goalCardHtml(goal, state);
-    }).join('');
+    var ranked = goals.map(function (g, i) {
+      return { goal: g, bucket: categoryGoalBucket(g, state), idx: i };
+    });
+    ranked.sort(function (a, b) {
+      if (a.bucket !== b.bucket) return a.bucket - b.bucket;
+      return a.idx - b.idx;
+    });
+
+    var cardsHtml = ranked.map(function (entry) { return categoryGoalCardHtml(entry.goal, state); }).join('');
+    if (!cardsHtml) {
+      cardsHtml = '<p class="empty-state">' + UI.escapeHtml(K.emptyCategory) + '</p>';
+    }
 
     var html =
       appBarHtml({ back: '#/home', title: Copy.category.eyebrow }) +
@@ -394,9 +654,344 @@
       '<h1 tabindex="-1">' + UI.escapeHtml(category.title) + '</h1>' +
       '</div>' +
       '</div>' +
-      '<div class="screen__body card-list">' + cardsHtml + '</div>';
+      '<div class="screen__body">' +
+      '<div class="card-list">' + cardsHtml + '</div>' +
+      '<button type="button" class="btn btn-secondary category-add-btn" id="add-custom-goal-btn">' + UI.escapeHtml(K.addButton) + '</button>' +
+      '<div class="category-manage-row">' +
+      '<button type="button" class="btn-quiet" id="cat-hidden-btn">' + UI.escapeHtml(K.hiddenSectionTitle) + '</button>' +
+      '<button type="button" class="btn-quiet" id="cat-reset-hidden-btn">' + UI.escapeHtml(K.resetHiddenButton) + '</button>' +
+      '</div>' +
+      '</div>';
 
     setScreen(html, { navKey: 'home' });
+
+    document.getElementById('add-custom-goal-btn').addEventListener('click', function () {
+      openGoalFormSheet({ mode: 'add', categoryId: categoryId });
+    });
+    document.getElementById('cat-hidden-btn').addEventListener('click', function () {
+      openHiddenRecommendedSheet(categoryId);
+    });
+    document.getElementById('cat-reset-hidden-btn').addEventListener('click', function () {
+      resetHiddenForCategory(categoryId);
+      UI.showToast(K.resetHiddenToast);
+      renderCategory(categoryId);
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-goal-menu]'), function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var id = btn.getAttribute('data-goal-menu');
+        var g = getGoal(id);
+        if (!g) return;
+        if (isCustomGoal(g)) {
+          openCustomGoalMenu(g);
+        } else {
+          openRecommendedGoalMenu(g);
+        }
+      });
+    });
+  }
+
+  /* ---------------- 내 행동 추가/수정 폼 ---------------- */
+
+  function openGoalFormSheet(opts) {
+    var K = Copy.customGoal;
+    var isEdit = opts.mode === 'edit';
+    var goal = opts.goal || null;
+    var categoryId = opts.categoryId;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'goal-form';
+
+    var titleField = document.createElement('div');
+    titleField.className = 'form-field';
+    var titleLabel = document.createElement('label');
+    titleLabel.className = 'form-field__label';
+    titleLabel.setAttribute('for', 'goal-form-title');
+    titleLabel.textContent = K.titleLabel;
+    var titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.id = 'goal-form-title';
+    titleInput.className = 'form-field__input';
+    titleInput.maxLength = CUSTOM_TITLE_MAX;
+    titleInput.placeholder = K.titlePlaceholder;
+    titleInput.value = goal ? goal.title : '';
+    titleInput.setAttribute('aria-required', 'true');
+    var errorEl = document.createElement('p');
+    errorEl.className = 'form-field__error';
+    errorEl.setAttribute('role', 'alert');
+    errorEl.style.display = 'none';
+    titleField.appendChild(titleLabel);
+    titleField.appendChild(titleInput);
+    titleField.appendChild(errorEl);
+
+    var descField = document.createElement('div');
+    descField.className = 'form-field';
+    var descLabel = document.createElement('label');
+    descLabel.className = 'form-field__label';
+    descLabel.setAttribute('for', 'goal-form-desc');
+    descLabel.textContent = K.descLabel;
+    var descInput = document.createElement('textarea');
+    descInput.id = 'goal-form-desc';
+    descInput.className = 'form-field__input form-field__textarea';
+    descInput.maxLength = CUSTOM_DESC_MAX;
+    descInput.placeholder = K.descPlaceholder;
+    descInput.rows = 3;
+    descInput.value = goal ? (goal.description || '') : '';
+    descField.appendChild(descLabel);
+    descField.appendChild(descInput);
+
+    var stepField = document.createElement('div');
+    stepField.className = 'form-field';
+    var stepLabel = document.createElement('label');
+    stepLabel.className = 'form-field__label';
+    stepLabel.setAttribute('for', 'goal-form-steps');
+    stepLabel.textContent = K.stepCountLabel;
+    var stepSelect = document.createElement('select');
+    stepSelect.id = 'goal-form-steps';
+    stepSelect.className = 'form-field__input';
+    for (var n = CUSTOM_MIN_STEPS; n <= CUSTOM_MAX_STEPS; n++) {
+      var o = document.createElement('option');
+      o.value = String(n);
+      o.textContent = n + '단계';
+      stepSelect.appendChild(o);
+    }
+    stepSelect.value = String(goal ? goal.steps.length : CUSTOM_STEP_COUNT_DEFAULT);
+    stepField.appendChild(stepLabel);
+    stepField.appendChild(stepSelect);
+
+    wrap.appendChild(titleField);
+    wrap.appendChild(descField);
+    wrap.appendChild(stepField);
+
+    function validate() {
+      var trimmed = titleInput.value.trim();
+      if (!trimmed) return K.titleRequiredError;
+      if (trimmed.length > CUSTOM_TITLE_MAX) return K.titleTooLongError;
+      if (isDuplicateCustomTitle(categoryId, trimmed, goal ? goal.id : null)) return K.duplicateError;
+      return null;
+    }
+
+    var saveBtn = null;
+    var touched = false;
+
+    function refreshValidity() {
+      var err = validate();
+      if (err && touched) {
+        errorEl.textContent = err;
+        errorEl.style.display = 'block';
+      } else {
+        errorEl.style.display = 'none';
+      }
+      if (saveBtn) saveBtn.disabled = !!err;
+    }
+
+    titleInput.addEventListener('input', function () {
+      touched = true;
+      refreshValidity();
+    });
+
+    UI.showSheet({
+      title: isEdit ? K.formEditTitle : K.formAddTitle,
+      extra: wrap,
+      actions: [
+        {
+          label: K.cancel,
+          className: 'btn btn-secondary',
+          onSelect: function () { UI.closeOverlay(); }
+        },
+        {
+          label: K.save,
+          className: 'btn btn-primary',
+          onSelect: function () {
+            var err = validate();
+            if (err) { refreshValidity(); return; }
+            var title = titleInput.value.trim();
+            var description = descInput.value.trim();
+            var stepCount = parseInt(stepSelect.value, 10);
+            if (isEdit) {
+              updateCustomGoal(goal.id, { title: title, description: description, stepCount: stepCount });
+              UI.closeOverlay();
+              UI.showToast(K.updatedToast);
+            } else {
+              createCustomGoal(categoryId, title, description, stepCount);
+              UI.closeOverlay();
+              UI.showToast(K.savedToast);
+            }
+            renderCategory(categoryId);
+          }
+        }
+      ]
+    });
+
+    saveBtn = document.querySelector('.sheet__actions .btn-primary');
+    refreshValidity();
+    A11y.focusElement(titleInput);
+  }
+
+  /* ---------------- 행동 관리 메뉴 (⋮) ---------------- */
+
+  function openCustomGoalMenu(goal) {
+    var K = Copy.customGoal;
+    var state = Storage.load();
+    var sameCategory = (state.customGoals || []).filter(function (g) { return g.categoryId === goal.categoryId; });
+    var idx = -1;
+    sameCategory.forEach(function (g, i) { if (g.id === goal.id) idx = i; });
+    var canUp = idx > 0;
+    var canDown = idx >= 0 && idx < sameCategory.length - 1;
+
+    UI.showActionSheet({
+      title: K.menuTitle,
+      actions: [
+        {
+          title: K.menuEdit,
+          body: K.menuEditBody,
+          icon: Icons.ui('edit'),
+          onSelect: function () {
+            UI.closeOverlay();
+            openGoalFormSheet({ mode: 'edit', categoryId: goal.categoryId, goal: goal });
+          }
+        },
+        {
+          title: K.menuMoveUp,
+          body: K.menuMoveUpBody,
+          icon: Icons.ui('arrowUp'),
+          disabled: !canUp,
+          onSelect: function () {
+            moveCustomGoal(goal.id, 'up');
+            UI.closeOverlay();
+            renderCategory(goal.categoryId);
+          }
+        },
+        {
+          title: K.menuMoveDown,
+          body: K.menuMoveDownBody,
+          icon: Icons.ui('arrowDown'),
+          disabled: !canDown,
+          onSelect: function () {
+            moveCustomGoal(goal.id, 'down');
+            UI.closeOverlay();
+            renderCategory(goal.categoryId);
+          }
+        },
+        {
+          title: K.menuDelete,
+          body: K.menuDeleteBody,
+          icon: Icons.ui('trash'),
+          variant: 'danger',
+          onSelect: function () {
+            UI.closeOverlay();
+            openDeleteCustomGoalDialog(goal);
+          }
+        }
+      ]
+    });
+  }
+
+  function openRecommendedGoalMenu(goal) {
+    var K = Copy.customGoal;
+    UI.showActionSheet({
+      title: K.menuTitle,
+      actions: [
+        {
+          title: K.menuCopy,
+          body: K.menuCopyBody,
+          icon: Icons.ui('copy'),
+          onSelect: function () {
+            copyRecommendedToCustom(goal.id);
+            UI.closeOverlay();
+            UI.showToast(K.copiedToast);
+            renderCategory(goal.categoryId);
+          }
+        },
+        {
+          title: K.menuHide,
+          body: K.menuHideBody,
+          icon: Icons.ui('eyeOff'),
+          variant: 'danger',
+          onSelect: function () {
+            hideRecommendedGoal(goal.id);
+            UI.closeOverlay();
+            UI.showToast(K.hiddenToast);
+            renderCategory(goal.categoryId);
+          }
+        }
+      ]
+    });
+  }
+
+  function openDeleteCustomGoalDialog(goal) {
+    var K = Copy.customGoal;
+    var state = Storage.load();
+    var hasProgress = !!(state.goalProgress && state.goalProgress[goal.id]);
+    UI.showDialog({
+      title: K.deleteDialogTitle,
+      body: hasProgress ? K.deleteDialogBodyWithProgress : null,
+      actions: [
+        {
+          label: K.deleteCancel,
+          className: 'btn btn-secondary',
+          onSelect: function () { UI.closeOverlay(); }
+        },
+        {
+          label: K.deleteConfirm,
+          className: 'btn-danger-quiet',
+          onSelect: function () {
+            deleteCustomGoal(goal.id);
+            UI.closeOverlay();
+            UI.showToast(K.deletedToast);
+            renderCategory(goal.categoryId);
+          }
+        }
+      ]
+    });
+  }
+
+  function openHiddenRecommendedSheet(categoryId) {
+    var K = Copy.customGoal;
+    var state = Storage.load();
+    var hiddenIds = state.hiddenRecommendedGoalIds || [];
+    var hiddenGoals = GOALS.filter(function (g) { return g.categoryId === categoryId && hiddenIds.indexOf(g.id) !== -1; });
+
+    var wrap = document.createElement('div');
+    wrap.className = 'hidden-goal-list';
+
+    if (!hiddenGoals.length) {
+      var empty = document.createElement('p');
+      empty.className = 'text-body';
+      empty.textContent = K.hiddenSectionEmpty;
+      wrap.appendChild(empty);
+    } else {
+      hiddenGoals.forEach(function (g) {
+        var row = document.createElement('div');
+        row.className = 'hidden-goal-row';
+        var titleSpan = document.createElement('span');
+        titleSpan.className = 'hidden-goal-row__title';
+        titleSpan.textContent = g.title;
+        var restoreBtn = document.createElement('button');
+        restoreBtn.type = 'button';
+        restoreBtn.className = 'hidden-goal-row__restore';
+        restoreBtn.textContent = K.restoreOne;
+        restoreBtn.addEventListener('click', function () {
+          restoreRecommendedGoal(g.id);
+          UI.closeOverlay();
+          UI.showToast(K.restoredToast);
+          renderCategory(categoryId);
+        });
+        row.appendChild(titleSpan);
+        row.appendChild(restoreBtn);
+        wrap.appendChild(row);
+      });
+    }
+
+    UI.showSheet({
+      title: K.hiddenSectionTitle,
+      extra: wrap,
+      actions: [
+        { label: K.close, className: 'btn btn-secondary', onSelect: function () { UI.closeOverlay(); } }
+      ]
+    });
   }
 
   /* ---------------- 오늘의 15분 행동 ---------------- */

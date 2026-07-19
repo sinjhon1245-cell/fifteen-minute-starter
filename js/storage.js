@@ -18,7 +18,52 @@
       },
       goalProgress: {},
       history: [],
-      activeSession: null
+      activeSession: null,
+      customGoals: [],
+      hiddenRecommendedGoalIds: []
+    };
+  }
+
+  var CUSTOM_STEP_FIELDS = ['action', 'preparation', 'focusMessage', 'fallbackAction', 'finishAction', 'nextPreview'];
+  var CUSTOM_STEP_FALLBACK = {
+    action: '지금 이 단계에서 할 행동을 15분 동안 진행하세요.',
+    preparation: '필요한 준비물이나 장소를 미리 정리해 두세요.',
+    focusMessage: '지금 하는 행동에 집중하세요.',
+    fallbackAction: '시간이 부족하면 더 작은 범위로 줄여서 진행하세요.',
+    finishAction: '오늘 진행한 부분을 간단히 기록해 두세요.',
+    nextPreview: '다음에는 이어서 진행합니다.'
+  };
+
+  function sanitizeCustomStep(s, idx) {
+    if (!s || typeof s !== 'object') s = {};
+    var out = {
+      id: typeof s.id === 'string' && s.id ? s.id : ('custom-step-' + (idx + 1)),
+      stepNumber: typeof s.stepNumber === 'number' ? s.stepNumber : (idx + 1),
+      title: typeof s.title === 'string' && s.title ? s.title : ('단계 ' + (idx + 1))
+    };
+    CUSTOM_STEP_FIELDS.forEach(function (f) {
+      out[f] = typeof s[f] === 'string' && s[f] ? s[f] : CUSTOM_STEP_FALLBACK[f];
+    });
+    return out;
+  }
+
+  function sanitizeCustomGoal(g) {
+    if (!g || typeof g !== 'object') return null;
+    if (typeof g.id !== 'string' || !g.id) return null;
+    if (typeof g.categoryId !== 'string' || !g.categoryId) return null;
+    if (typeof g.title !== 'string' || !g.title.trim()) return null;
+    var steps = Array.isArray(g.steps) ? g.steps : [];
+    if (!steps.length) return null;
+    return {
+      id: g.id,
+      categoryId: g.categoryId,
+      source: 'custom',
+      title: g.title,
+      description: typeof g.description === 'string' ? g.description : '',
+      startMessage: typeof g.startMessage === 'string' && g.startMessage ? g.startMessage : '지금 할 수 있는 만큼 시작하세요.',
+      steps: steps.map(sanitizeCustomStep),
+      createdAt: typeof g.createdAt === 'number' ? g.createdAt : Date.now(),
+      updatedAt: typeof g.updatedAt === 'number' ? g.updatedAt : Date.now()
     };
   }
 
@@ -110,7 +155,11 @@
       settings: Object.assign({}, fresh.settings, state.settings && typeof state.settings === 'object' ? state.settings : {}),
       goalProgress: state.goalProgress && typeof state.goalProgress === 'object' ? state.goalProgress : {},
       history: Array.isArray(state.history) ? state.history : [],
-      activeSession: state.activeSession && typeof state.activeSession === 'object' ? state.activeSession : null
+      activeSession: state.activeSession && typeof state.activeSession === 'object' ? state.activeSession : null,
+      customGoals: Array.isArray(state.customGoals) ? state.customGoals.map(sanitizeCustomGoal).filter(Boolean) : [],
+      hiddenRecommendedGoalIds: Array.isArray(state.hiddenRecommendedGoalIds)
+        ? state.hiddenRecommendedGoalIds.filter(function (id) { return typeof id === 'string'; })
+        : []
     };
   }
 
